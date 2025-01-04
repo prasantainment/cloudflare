@@ -1,0 +1,5 @@
+environment: "development"
+server:
+  address: ":8080"
+logging:
+  level: "info"

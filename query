@@ -1,0 +1,111 @@
+query {
+  viewer {
+    zones(filter: { zoneTag_in: ["627de96e341366cf62d43c2063e8a9ac", "c11513b3a030ff0ecd3fb80033891c2b"] }) {
+      zoneTag
+      httpRequests1mGroups(
+        limit: 300
+        filter: { datetime_geq: "2024-12-21T00:00:00Z", datetime_lt: "2024-12-21T12:00:00Z"  }
+      ) {
+        uniq {
+          uniques
+        }
+        sum {
+          browserMap {
+            pageViews
+            uaBrowserFamily
+          }
+          bytes
+          cachedBytes
+          cachedRequests
+          clientHTTPVersionMap {
+            clientHTTPProtocol
+            requests
+          }
+          clientSSLMap {
+            clientSSLProtocol
+            requests
+          }
+          contentTypeMap {
+            bytes
+            requests
+            edgeResponseContentTypeName
+          }
+          countryMap {
+            bytes
+            clientCountryName
+            requests
+            threats
+          }
+          encryptedBytes
+          encryptedRequests
+          ipClassMap {
+            ipType
+            requests
+          }
+          pageViews
+          requests
+          responseStatusMap {
+            edgeResponseStatus
+            requests
+          }
+          threatPathingMap {
+            requests
+            threatPathingName
+          }
+          threats
+        }
+        dimensions {
+          datetime
+        }
+      }
+      firewallEventsAdaptiveGroups(
+        limit: 300
+        filter: { datetime_geq: "2024-12-10T00:00:00Z", datetime_lt: "2024-12-21T00:00:00Z" }
+      ) {
+        count
+        dimensions {
+          action
+          source
+          ruleId
+          clientRequestHTTPHost
+          clientCountryName
+        }
+      }
+      httpRequestsAdaptiveGroups(
+        limit: 300
+        filter: { datetime_geq: "2024-12-20T00:00:00Z", datetime_lt: "2024-12-21T00:00:00Z", cacheStatus_notin: ["hit"] }
+      ) {
+        count
+        dimensions {
+          originResponseStatus
+          clientCountryName
+          clientRequestHTTPHost
+        }
+      }
+      httpRequestsEdgeCountryHost: httpRequestsAdaptiveGroups(
+        limit: 300
+        filter: { datetime_geq: "2024-12-20T00:00:00Z", datetime_lt: "2024-12-21T00:00:00Z" }
+      ) {
+        count
+        dimensions {
+          edgeResponseStatus
+          clientCountryName
+          clientRequestHTTPHost
+        }
+      }
+      healthCheckEventsAdaptiveGroups(
+        limit: 300
+        filter: { datetime_geq: "2024-12-21T11:00:00Z", datetime_lt: "2024-12-21T22:00:00Z" }
+      ) {
+        count
+        dimensions {
+          healthStatus
+          originIP
+          region
+          fqdn
+        }
+      }
+    }
+  }
+}
+
