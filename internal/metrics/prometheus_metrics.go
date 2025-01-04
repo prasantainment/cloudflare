@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/viper"
 )
 
+// MetricName represent metric name
 type MetricName string
 
 func (mn MetricName) String() string {
@@ -74,14 +75,17 @@ const (
 	zoneCertificateValidationStatus        MetricName = "cloudflare_zone_certificate_validation_status"
 )
 
-type MetricsSet map[MetricName]struct{}
+// Set map to check metric name availability.
+type Set map[MetricName]struct{}
 
-func (ms MetricsSet) Has(mn MetricName) bool {
+// Has function check and return bool for metric availability.
+func (ms Set) Has(mn MetricName) bool {
 	_, exists := ms[mn]
 	return exists
 }
 
-func (ms MetricsSet) Add(mn MetricName) {
+// Add function add metric name.
+func (ms Set) Add(mn MetricName) {
 	ms[mn] = struct{}{}
 }
 
@@ -322,7 +326,7 @@ var (
 	}, []string{"zone", "account", "cachedRequests", "requests"},
 	)
 
-	ZoneHealthCheckEventsAvg = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	zoneHealthCheckEventsAvg = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: zoneHealthCheckEventsAdaptiveGroupsAvg.String(),
 		Help: "Number fo cache hit ratio",
 	}, []string{"zone", "account"},
@@ -337,7 +341,7 @@ var (
 	zoneFirewallAction = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: zoneFirewallRequestAction.String(),
 		Help: "Number of Firewall events",
-	}, []string{"zone", "account", "action", "rule", "host"},
+	}, []string{"zone", "account", "action"},
 	)
 
 	zoneRequestMethod = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -383,8 +387,9 @@ var (
 	)
 )
 
-func BuildAllMetricsSet() MetricsSet {
-	allMetricsSet := MetricsSet{}
+// BuildAllMetricsSet helps to build all metric and return as Set.
+func BuildAllMetricsSet() Set {
+	allMetricsSet := Set{}
 	allMetricsSet.Add(zoneRequestTotalMetricName)
 	allMetricsSet.Add(zoneRequestCachedMetricName)
 	allMetricsSet.Add(zoneRequestSSLEncryptedMetricName)
@@ -436,8 +441,9 @@ func BuildAllMetricsSet() MetricsSet {
 	return allMetricsSet
 }
 
-func BuildDeniedMetricsSet(metricsDenylist []string) (MetricsSet, error) {
-	deniedMetricsSet := MetricsSet{}
+// BuildDeniedMetricsSet returns Set and error.
+func BuildDeniedMetricsSet(metricsDenylist []string) (Set, error) {
+	deniedMetricsSet := Set{}
 	allMetricsSet := BuildAllMetricsSet()
 	for _, metric := range metricsDenylist {
 		if !allMetricsSet.Has(MetricName(metric)) {
@@ -448,7 +454,8 @@ func BuildDeniedMetricsSet(metricsDenylist []string) (MetricsSet, error) {
 	return deniedMetricsSet, nil
 }
 
-func MustRegisterMetrics(deniedMetrics MetricsSet) {
+// MustRegisterMetrics register the metrics.
+func MustRegisterMetrics(deniedMetrics Set) {
 	if !deniedMetrics.Has(zoneRequestTotalMetricName) {
 		prometheus.MustRegister(zoneRequestTotal)
 	}
@@ -559,7 +566,7 @@ func MustRegisterMetrics(deniedMetrics MetricsSet) {
 		prometheus.MustRegister(zoneBotRequests)
 	}
 	if !deniedMetrics.Has(zoneHealthCheckEventsAdaptiveGroupsAvg) {
-		prometheus.MustRegister(ZoneHealthCheckEventsAvg)
+		prometheus.MustRegister(zoneHealthCheckEventsAvg)
 	}
 	if !deniedMetrics.Has(zoneFirewallBotsDetectedSource) {
 		prometheus.MustRegister(zoneFirewallBotsDetected)
@@ -587,11 +594,10 @@ func MustRegisterMetrics(deniedMetrics MetricsSet) {
 	}
 }
 
+// FetchWorkerAnalytics handles cloudflare account and expose metrics like requests, error, Worker CPUTime and Duration.
 func FetchWorkerAnalytics(account cloudflare.Account, wg *sync.WaitGroup) {
-
 	wg.Add(1)
 	defer wg.Done()
-
 	// Replace spaces with hyphens and convert to lowercase
 	accountName := strings.ToLower(strings.ReplaceAll(account.Name, " ", "-"))
 
@@ -637,6 +643,7 @@ func initializeDefaultMetrics(accountName, scriptName string) {
 	}
 }
 
+// filterZones helper function to filter the zones.
 func filterZones(all []cloudflare.Zone, target []string) []cloudflare.Zone {
 	var filtered []cloudflare.Zone
 
@@ -655,10 +662,9 @@ func filterZones(all []cloudflare.Zone, target []string) []cloudflare.Zone {
 	return filtered
 }
 
+// getTargetZones helper function to get targeted zones.
 func getTargetZones() []string {
-
 	var zoneIDs []string
-
 	if len(viper.GetString("cf_zones")) > 0 {
 		zoneIDs = strings.Split(viper.GetString("cf_zones"), ",")
 	} else {
@@ -673,6 +679,7 @@ func getTargetZones() []string {
 	return zoneIDs
 }
 
+// getExcludedZones returns array of excluded zones.
 func getExcludedZones() []string {
 	var zoneIDs []string
 
@@ -682,6 +689,7 @@ func getExcludedZones() []string {
 	return zoneIDs
 }
 
+// fetchLogpushAnalyticsForAccount expose metrics related to logpush.
 func fetchLogpushAnalyticsForAccount(account cloudflare.Account, wg *sync.WaitGroup) {
 	wg.Add(1)
 	defer wg.Done()
@@ -934,9 +942,9 @@ func addHTTPGroups(z *models.ZoneResp, name string, account string) {
 	// Push metrics to Prometheus
 	for method, count := range methodCounts {
 		zoneRequestMethod.With(prometheus.Labels{
-			"zone":        name,
-			"account":     account,
-			"http_method": method, // The HTTP method dimension
+			"zone":    name,
+			"account": account,
+			"method":  method, // The HTTP method dimension
 		}).Add(count)
 	}
 }
@@ -1042,7 +1050,7 @@ func addHealthCheckGroups(z *models.ZoneResp, name string, account string) {
 			"fqdn":          "unknown",
 		}).Add(0)
 
-	ZoneHealthCheckEventsAvg.With(
+	zoneHealthCheckEventsAvg.With(
 		prometheus.Labels{
 			"zone":    name,
 			"account": account,
@@ -1079,7 +1087,7 @@ func addHealthCheckGroups(z *models.ZoneResp, name string, account string) {
 		avgHealthCheckEvents = float64(totalEvents) / float64(totalCount)
 	}
 
-	ZoneHealthCheckEventsAvg.With(
+	zoneHealthCheckEventsAvg.With(
 		prometheus.Labels{
 			"zone":    name,
 			"account": account,
@@ -1447,10 +1455,9 @@ func fetchSSLCertificateStatus(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 	}
 }
 
+// FetchMetrics handle all the functions concurrently to expose metrics.
 func FetchMetrics() {
-
 	var wg sync.WaitGroup
-
 	zones := cloudflareAPI.FetchZones()
 	accounts := cloudflareAPI.FetchAccounts()
 	filteredZones := cloudflareAPI.FilterExcludedZones(filterZones(zones, getTargetZones()), getExcludedZones())

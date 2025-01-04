@@ -20,16 +20,8 @@ var (
 	cfGraphQLEndpoint = "https://api.cloudflare.com/client/v4/graphql/"
 )
 
-type cloudflareResponse struct {
-	Viewer struct {
-		Zones []models.ZoneResp `json:"zones"`
-	} `json:"viewer"`
-}
-
+// FetchZones function returns all the zones in an arrays.
 func FetchZones() []cloudflare.Zone {
-
-	fmt.Println("fetch zones:::::")
-
 	var api *cloudflare.API
 	var err error
 	if len(viper.GetString("cf_api_token")) > 0 {
@@ -50,8 +42,8 @@ func FetchZones() []cloudflare.Zone {
 	return z
 }
 
+// FetchAccounts function return account in an array.
 func FetchAccounts() []cloudflare.Account {
-
 	var api *cloudflare.API
 	var err error
 	if len(viper.GetString("cf_api_token")) > 0 {
@@ -72,8 +64,9 @@ func FetchAccounts() []cloudflare.Account {
 	return a
 }
 
-func FetchZoneTotals(zoneIDs []string) (*cloudflareResponse, error) {
-
+// FetchZoneTotals retrieves aggregated metrics for the specified zone IDs, including topics like
+// httpRequests1mGroups, firewallEventsAdaptiveGroups, httpRequestsAdaptiveGroups, and healthCheckEventsAdaptiveGroups.
+func FetchZoneTotals(zoneIDs []string) (*models.CloudflareResponse, error) {
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
 	s := 60 * time.Second
 	now = now.Truncate(s)
@@ -190,7 +183,7 @@ func FetchZoneTotals(zoneIDs []string) (*cloudflareResponse, error) {
 	ctx := context.Background()
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
 
-	var resp cloudflareResponse
+	var resp models.CloudflareResponse
 	if err := graphqlClient.Run(ctx, request, &resp); err != nil {
 		logging.Error(err)
 		return nil, err
@@ -199,8 +192,8 @@ func FetchZoneTotals(zoneIDs []string) (*cloudflareResponse, error) {
 	return &resp, nil
 }
 
+// FetchWorkerTotals function query workersInvocationsAdaptive
 func FetchWorkerTotals(accountID string) (*models.CloudflareResponseAccts, error) {
-
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
 	s := 60 * time.Second
 	now = now.Truncate(s)
@@ -260,8 +253,8 @@ func FetchWorkerTotals(accountID string) (*models.CloudflareResponseAccts, error
 	return &resp, nil
 }
 
+// FetchLogpushAccount queries logpushHealthAdaptiveGroups and returns CloudflareResponseLogpushAccount.
 func FetchLogpushAccount(accountID string) (*models.CloudflareResponseLogpushAccount, error) {
-
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
 	s := 60 * time.Second
 	now = now.Truncate(s)
@@ -314,17 +307,16 @@ func FetchLogpushAccount(accountID string) (*models.CloudflareResponseLogpushAcc
 	return &resp, nil
 }
 
+// ExtractZoneIDs extracts zone Ids from zones and return array of zone ids.
 func ExtractZoneIDs(zones []cloudflare.Zone) []string {
-
 	var IDs []string
-
 	for _, z := range zones {
 		IDs = append(IDs, z.ID)
 	}
-
 	return IDs
 }
 
+// contains helper function
 func contains(s []string, e string) bool {
 	for _, a := range s {
 		if a == e {
@@ -334,6 +326,7 @@ func contains(s []string, e string) bool {
 	return false
 }
 
+// FilterExcludedZones excludes zones and return array of non excludes zones
 func FilterExcludedZones(all []cloudflare.Zone, exclude []string) []cloudflare.Zone {
 	var filtered []cloudflare.Zone
 
@@ -352,6 +345,7 @@ func FilterExcludedZones(all []cloudflare.Zone, exclude []string) []cloudflare.Z
 	return filtered
 }
 
+// FetchFirewallRules queries firewall rules.
 func FetchFirewallRules(zoneID string) map[string]string {
 
 	var api *cloudflare.API
@@ -397,6 +391,7 @@ func FetchFirewallRules(zoneID string) map[string]string {
 	return firewallRulesMap
 }
 
+// FetchColoTotals returns queries httpRequestsAdaptiveGroups.
 func FetchColoTotals(zoneIDs []string) (*models.CloudflareResponseColo, error) {
 
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
@@ -453,6 +448,7 @@ func FetchColoTotals(zoneIDs []string) (*models.CloudflareResponseColo, error) {
 	return &resp, nil
 }
 
+// FetchLoadBalancerTotals returns data by querying loadBalancingRequestsAdaptiveGroups and loadBalancingRequestsAdaptive.
 func FetchLoadBalancerTotals(zoneIDs []string) (*models.CloudflareResponseLb, error) {
 
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
@@ -531,8 +527,8 @@ func FetchLoadBalancerTotals(zoneIDs []string) (*models.CloudflareResponseLb, er
 	return &resp, nil
 }
 
+// FetchLogpushZone query logpushHealthAdaptiveGroups and return CloudflareResponseLogpushZone
 func FetchLogpushZone(zoneIDs []string) (*models.CloudflareResponseLogpushZone, error) {
-
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
 	s := 60 * time.Second
 	now = now.Truncate(s)
@@ -585,8 +581,8 @@ func FetchLogpushZone(zoneIDs []string) (*models.CloudflareResponseLogpushZone, 
 	return &resp, nil
 }
 
+// FetchFirewallEventsAllowedDenied queries logpushHealthAdaptiveGroups.
 func FetchFirewallEventsAllowedDenied(zoneIDs []string) (*models.CloudflareResponseLogpushZone, error) {
-
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
 	s := 60 * time.Second
 	now = now.Truncate(s)
@@ -639,8 +635,8 @@ func FetchFirewallEventsAllowedDenied(zoneIDs []string) (*models.CloudflareRespo
 	return &resp, nil
 }
 
+// MagicTransitTunnelHealthChecksAdaptiveGroups query magicTransitTunnelHealthChecksAdaptiveGroups.
 func MagicTransitTunnelHealthChecksAdaptiveGroups(accountID string) (*models.CloudflareResponseMagicTransit, error) {
-
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
 	s := 60 * time.Second
 	now = now.Truncate(s)
@@ -692,6 +688,7 @@ func MagicTransitTunnelHealthChecksAdaptiveGroups(accountID string) (*models.Clo
 	return &resp, nil
 }
 
+// FetchSSLCertificateStatus query cloudflare to check SSL certificate details.
 func FetchSSLCertificateStatus(zoneID []string) (*models.SSLResponse, error) {
 	// Define Cloudflare API endpoint for SSL certificates
 	// url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/ssl/certificate_packs", "627de96e341366cf62d43c2063e8a9ac")

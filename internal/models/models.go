@@ -1,41 +1,51 @@
 package models
 
+// CloudflareResponse represents the Cloudflare API response for zones.
 type CloudflareResponse struct {
+	// Viewer contains the list of zones.
 	Viewer struct {
+		// Zones holds the list of ZoneResponse data.
 		Zones []ZoneResp `json:"zones"`
 	} `json:"viewer"`
 }
 
+// CloudflareResponseAccts represents the Cloudflare API response for accounts.
 type CloudflareResponseAccts struct {
 	Viewer struct {
+		// Accounts holds the list of AccountResponse data.
 		Accounts []AccountResp `json:"accounts"`
 	} `json:"viewer"`
 }
 
+// CloudflareResponseColo represents the Cloudflare API response for colo groups.
 type CloudflareResponseColo struct {
 	Viewer struct {
 		Zones []ZoneRespColo `json:"zones"`
 	} `json:"viewer"`
 }
 
+// CloudflareResponseLb represents the Cloudflare API response for load balancing zones.
 type CloudflareResponseLb struct {
 	Viewer struct {
 		Zones []LbResp `json:"zones"`
 	} `json:"viewer"`
 }
 
+// CloudflareResponseLogpushAccount represents the Cloudflare API response for logpush accounts.
 type CloudflareResponseLogpushAccount struct {
 	Viewer struct {
 		Accounts []LogpushResponse `json:"accounts"`
 	} `json:"viewer"`
 }
 
+// CloudflareResponseLogpushZone represents the Cloudflare API response for logpush zones.
 type CloudflareResponseLogpushZone struct {
 	Viewer struct {
 		Zones []LogpushResponse `json:"zones"`
 	} `json:"viewer"`
 }
 
+// LogpushResponse contains the data for logpush health checks.
 type LogpushResponse struct {
 	LogpushHealthAdaptiveGroups []struct {
 		Count uint64 `json:"count"`
@@ -50,6 +60,7 @@ type LogpushResponse struct {
 	} `json:"logpushHealthAdaptiveGroups"`
 }
 
+// AccountResp represents an account's invocations and statistics.
 type AccountResp struct {
 	WorkersInvocationsAdaptive []struct {
 		Dimensions struct {
@@ -76,6 +87,7 @@ type AccountResp struct {
 	} `json:"workersInvocationsAdaptive"`
 }
 
+// ZoneRespColo represents a zone's data for colo groups.
 type ZoneRespColo struct {
 	ColoGroups []struct {
 		Dimensions struct {
@@ -96,6 +108,7 @@ type ZoneRespColo struct {
 	ZoneTag string `json:"zoneTag"`
 }
 
+// ZoneResp represents a zone's data for HTTP requests, firewall events, and other metrics.
 type ZoneResp struct {
 	HTTP1mGroups []struct {
 		Dimensions struct {
@@ -193,6 +206,7 @@ type ZoneResp struct {
 	ZoneTag string `json:"zoneTag"`
 }
 
+// LbResp represents LoadBalancingRequestsAdaptiveGroups and LoadBalancingRequestsAdaptive.
 type LbResp struct {
 	LoadBalancingRequestsAdaptiveGroups []struct {
 		Count      uint64 `json:"count"`
@@ -235,12 +249,14 @@ type LbResp struct {
 	ZoneTag string `json:"zoneTag"`
 }
 
+// CloudflareResponseMagicTransit represents MagicTransitAccount
 type CloudflareResponseMagicTransit struct {
 	Viewer struct {
 		Accounts []MagicTransitAccount `json:"accounts"`
 	} `json:"viewer"`
 }
 
+// MagicTransitAccount represents MagicTransitTunnelHealthChecksAdaptiveGroups
 type MagicTransitAccount struct {
 	MagicTransitTunnelHealthChecksAdaptiveGroups []struct {
 		Count      uint64 `json:"count"`
@@ -258,6 +274,7 @@ type MagicTransitAccount struct {
 	} `json:"magicTransitTunnelHealthChecksAdaptiveGroups"`
 }
 
+// Certificate to handle SSL
 type Certificate struct {
 	ID                   string   `json:"id"`
 	Type                 string   `json:"type"`
@@ -271,11 +288,13 @@ type Certificate struct {
 	Hosts                []string `json:"hosts"`
 }
 
+// Zone represents ZoneId and Certificate.
 type Zone struct {
 	ZoneID       string        `json:"zone_id"`
 	Certificates []Certificate `json:"certificates"`
 }
 
+// SSLResponse represents array of Zones.
 type SSLResponse struct {
 	Result []Zone `json:"result"`
 }
