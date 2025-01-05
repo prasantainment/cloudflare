@@ -960,8 +960,6 @@ func normalizeRuleName(initialText string) string {
 
 func addFirewallGroups(z *models.ZoneResp, name string, account string) {
 
-	fmt.Println("addFirewallGroups:::::::;", z.FirewallEventsAdaptiveGroups)
-
 	// Initialize metrics with default values
 	zoneFirewallEventsCount.With(
 		prometheus.Labels{
@@ -1487,5 +1485,4 @@ func FetchMetrics() {
 	}
 	wg.Wait()
 
-	fmt.Println("fetchzone:::", zones)
 }

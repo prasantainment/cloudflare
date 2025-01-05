@@ -30,13 +30,19 @@ func FetchZones() []cloudflare.Zone {
 		api, err = cloudflare.New(viper.GetString("cf_api_key"), viper.GetString("cf_api_email"))
 	}
 	if err != nil {
-		logging.Fatal(err)
+		logging.Fatal("Failed to initialize Cloudflare API client", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
+	// Fetch zones using the Cloudflare API
+	logging.Info("Fetching zones from Cloudflare API", nil)
 	ctx := context.Background()
 	z, err := api.ListZones(ctx)
 	if err != nil {
-		logging.Fatal(err)
+		logging.Fatal("Failed to fetch zones from Cloudflare API", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
 	return z
@@ -51,15 +57,25 @@ func FetchAccounts() []cloudflare.Account {
 	} else {
 		api, err = cloudflare.New(viper.GetString("cf_api_key"), viper.GetString("cf_api_email"))
 	}
+	// Handle API client initialization error
 	if err != nil {
-		logging.Fatal(err)
+		logging.Fatal("Failed to initialize Cloudflare API client", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
 	ctx := context.Background()
 	a, _, err := api.Accounts(ctx, cloudflare.AccountsListParams{PaginationOptions: cloudflare.PaginationOptions{PerPage: 100}})
 	if err != nil {
-		logging.Fatal(err)
+		logging.Fatal("Failed to fetch accounts from Cloudflare API", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
+
+	// Log the number of accounts fetched
+	logging.Info("Successfully fetched accounts", map[string]interface{}{
+		"account_count": len(a),
+	})
 
 	return a
 }
@@ -183,11 +199,27 @@ func FetchZoneTotals(zoneIDs []string) (*models.CloudflareResponse, error) {
 	ctx := context.Background()
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
 
+	// Log the query parameters for debugging
+	logging.Info("Fetching zone totals from Cloudflare API", map[string]interface{}{
+		"zoneIDs":           zoneIDs,
+		"limit":             9999,
+		"maxtime":           now,
+		"mintime":           now1mAgo,
+		"cfGraphQLEndpoint": cfGraphQLEndpoint,
+	})
+
 	var resp models.CloudflareResponse
 	if err := graphqlClient.Run(ctx, request, &resp); err != nil {
-		logging.Error(err)
+		logging.Error("Failed to fetch zone totals", map[string]interface{}{
+			"error": err.Error(),
+		})
 		return nil, err
 	}
+
+	// Log the successful response
+	logging.Info("Successfully fetched zone totals", map[string]interface{}{
+		"zone_count": len(resp.Viewer.Zones),
+	})
 
 	return &resp, nil
 }
@@ -242,13 +274,31 @@ func FetchWorkerTotals(accountID string) (*models.CloudflareResponseAccts, error
 	request.Var("mintime", now1mAgo)
 	request.Var("accountID", accountID)
 
+	// Log the query parameters for debugging
+	logging.Info("Fetching worker totals for Cloudflare account", map[string]interface{}{
+		"accountID":         accountID,
+		"limit":             9999,
+		"maxtime":           now,
+		"mintime":           now1mAgo,
+		"cfGraphQLEndpoint": cfGraphQLEndpoint,
+	})
+
 	ctx := context.Background()
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
 	var resp models.CloudflareResponseAccts
 	if err := graphqlClient.Run(ctx, request, &resp); err != nil {
-		logging.Error(err)
+		logging.Error("Failed to fetch worker totals", map[string]interface{}{
+			"accountID": accountID,
+			"error":     err.Error(),
+		})
 		return nil, err
 	}
+
+	// Log the successful response
+	logging.Info("Successfully fetched worker totals", map[string]interface{}{
+		"worker_count": len(resp.Viewer.Accounts),
+		"accountID":    accountID,
+	})
 
 	return &resp, nil
 }
@@ -296,13 +346,31 @@ func FetchLogpushAccount(accountID string) (*models.CloudflareResponseLogpushAcc
 	request.Var("maxtime", now)
 	request.Var("mintime", now1mAgo)
 
+	// Log the query parameters for debugging
+	logging.Info("Fetching logpush health data for Cloudflare account", map[string]interface{}{
+		"accountID":         accountID,
+		"limit":             9999,
+		"maxtime":           now,
+		"mintime":           now1mAgo,
+		"cfGraphQLEndpoint": cfGraphQLEndpoint,
+	})
+
 	ctx := context.Background()
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
 	var resp models.CloudflareResponseLogpushAccount
 	if err := graphqlClient.Run(ctx, request, &resp); err != nil {
-		logging.Error(err)
+		logging.Error("Failed to fetch logpush health data", map[string]interface{}{
+			"accountID": accountID,
+			"error":     err.Error(),
+		})
 		return nil, err
 	}
+
+	// Log the successful response
+	logging.Info("Successfully fetched logpush health data", map[string]interface{}{
+		"logpush_count": len(resp.Viewer.Accounts[0].LogpushHealthAdaptiveGroups),
+		"accountID":     accountID,
+	})
 
 	return &resp, nil
 }
@@ -331,16 +399,27 @@ func FilterExcludedZones(all []cloudflare.Zone, exclude []string) []cloudflare.Z
 	var filtered []cloudflare.Zone
 
 	if (len(exclude)) == 0 {
+		logging.Info("No zones to exclude. Returning all zones.", nil)
 		return all
 	}
 
 	for _, z := range all {
 		if contains(exclude, z.ID) {
-			logging.Info("Exclude zone: ", z.ID, " ", z.Name)
+			// Log zones that are excluded
+			logging.Info("Excluding zone", map[string]interface{}{
+				"zoneID":   z.ID,
+				"zoneName": z.Name,
+			})
 		} else {
 			filtered = append(filtered, z)
 		}
 	}
+
+	// Log the number of zones returned after filtering
+	logging.Info("Filtered zones count", map[string]interface{}{
+		"totalExcluded": len(all) - len(filtered),
+		"totalReturned": len(filtered),
+	})
 
 	return filtered
 }
@@ -359,6 +438,11 @@ func FetchFirewallRules(zoneID string) map[string]string {
 		logging.Fatal(err)
 	}
 
+	// Log the start of the firewall rules fetch
+	logging.Info("Fetching firewall rules for zone", map[string]interface{}{
+		"zoneID": zoneID,
+	})
+
 	ctx := context.Background()
 	listOfRules, _, err := api.FirewallRules(ctx,
 		cloudflare.ZoneIdentifier(zoneID),
@@ -376,11 +460,22 @@ func FetchFirewallRules(zoneID string) map[string]string {
 	if err != nil {
 		logging.Fatal(err)
 	}
+
+	logging.Info("Fetched rulesets", map[string]interface{}{
+		"zoneID":          zoneID,
+		"rulesetsFetched": len(listOfRulesets),
+	})
+
 	for _, rulesetDesc := range listOfRulesets {
 		if rulesetDesc.Phase == "http_request_firewall_managed" {
 			ruleset, err := api.GetRuleset(ctx, cloudflare.ZoneIdentifier(zoneID), rulesetDesc.ID)
 			if err != nil {
-				logging.Fatal(err)
+				logging.Info("Fetched managed ruleset", map[string]interface{}{
+					"zoneID":       zoneID,
+					"rulesetID":    rulesetDesc.ID,
+					"rulesetName":  rulesetDesc.Name,
+					"rulesFetched": len(ruleset.Rules),
+				})
 			}
 			for _, rule := range ruleset.Rules {
 				firewallRulesMap[rule.ID] = rule.Description
@@ -388,11 +483,22 @@ func FetchFirewallRules(zoneID string) map[string]string {
 		}
 	}
 
+	// Log the number of rules collected
+	logging.Info("Total firewall rules collected", map[string]interface{}{
+		"zoneID":     zoneID,
+		"totalRules": len(firewallRulesMap),
+	})
+
 	return firewallRulesMap
 }
 
 // FetchColoTotals returns queries httpRequestsAdaptiveGroups.
 func FetchColoTotals(zoneIDs []string) (*models.CloudflareResponseColo, error) {
+
+	// Log the start of the process
+	logging.Info("Fetching Colo totals for zoneIDs", map[string]interface{}{
+		"zoneIDs": zoneIDs,
+	})
 
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
 	s := 60 * time.Second
@@ -437,19 +543,40 @@ func FetchColoTotals(zoneIDs []string) (*models.CloudflareResponseColo, error) {
 	request.Var("mintime", now1mAgo)
 	request.Var("zoneIDs", zoneIDs)
 
+	// Log request variables
+	logging.Info("GraphQL request variables", map[string]interface{}{
+		"limit":   9999,
+		"maxtime": now,
+		"mintime": now1mAgo,
+		"zoneIDs": zoneIDs,
+	})
+
 	ctx := context.Background()
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
 	var resp models.CloudflareResponseColo
 	if err := graphqlClient.Run(ctx, request, &resp); err != nil {
-		logging.Error(err)
+		// Log the error if request fails
+		logging.Error("Failed to fetch Colo totals", map[string]interface{}{
+			"error": err,
+		})
 		return nil, err
 	}
+
+	// Log success after receiving response
+	logging.Info("Successfully fetched Colo totals", map[string]interface{}{
+		"zoneIDs":  zoneIDs,
+		"response": resp,
+	})
 
 	return &resp, nil
 }
 
 // FetchLoadBalancerTotals returns data by querying loadBalancingRequestsAdaptiveGroups and loadBalancingRequestsAdaptive.
 func FetchLoadBalancerTotals(zoneIDs []string) (*models.CloudflareResponseLb, error) {
+	// Log the start of the process
+	logging.Info("Fetching Load Balancer totals for zoneIDs", map[string]interface{}{
+		"zoneIDs": zoneIDs,
+	})
 
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
 	s := 60 * time.Second
@@ -516,19 +643,41 @@ func FetchLoadBalancerTotals(zoneIDs []string) (*models.CloudflareResponseLb, er
 	request.Var("mintime", now1mAgo)
 	request.Var("zoneIDs", zoneIDs)
 
+	// Log request variables
+	logging.Info("GraphQL request variables", map[string]interface{}{
+		"limit":   9999,
+		"maxtime": now,
+		"mintime": now1mAgo,
+		"zoneIDs": zoneIDs,
+	})
+
 	ctx := context.Background()
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
 	var resp models.CloudflareResponseLb
 	if err := graphqlClient.Run(ctx, request, &resp); err != nil {
-		logging.Error(err)
+		// Log the error if request fails
+		logging.Error("Failed to fetch Load Balancer totals", map[string]interface{}{
+			"error": err,
+		})
 		return nil, err
 	}
+
+	// Log success after receiving response
+	logging.Info("Successfully fetched Load Balancer totals", map[string]interface{}{
+		"zoneIDs":  zoneIDs,
+		"response": resp,
+	})
 
 	return &resp, nil
 }
 
 // FetchLogpushZone query logpushHealthAdaptiveGroups and return CloudflareResponseLogpushZone
 func FetchLogpushZone(zoneIDs []string) (*models.CloudflareResponseLogpushZone, error) {
+	// Log the start of the process
+	logging.Info("Fetching Logpush zone for zoneIDs", map[string]interface{}{
+		"zoneIDs": zoneIDs,
+	})
+
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
 	s := 60 * time.Second
 	now = now.Truncate(s)
@@ -570,6 +719,14 @@ func FetchLogpushZone(zoneIDs []string) (*models.CloudflareResponseLogpushZone, 
 	request.Var("maxtime", now)
 	request.Var("mintime", now1mAgo)
 
+	// Log request variables
+	logging.Info("GraphQL request variables", map[string]interface{}{
+		"zoneIDs": zoneIDs,
+		"limit":   9999,
+		"maxtime": now,
+		"mintime": now1mAgo,
+	})
+
 	ctx := context.Background()
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
 	var resp models.CloudflareResponseLogpushZone
@@ -577,12 +734,23 @@ func FetchLogpushZone(zoneIDs []string) (*models.CloudflareResponseLogpushZone, 
 		logging.Error(err)
 		return nil, err
 	}
+
+	// Log success after receiving response
+	logging.Info("Successfully fetched Logpush zone data", map[string]interface{}{
+		"zoneIDs":  zoneIDs,
+		"response": resp,
+	})
 
 	return &resp, nil
 }
 
 // FetchFirewallEventsAllowedDenied queries logpushHealthAdaptiveGroups.
 func FetchFirewallEventsAllowedDenied(zoneIDs []string) (*models.CloudflareResponseLogpushZone, error) {
+	// Log the start of the process
+	logging.Info("Fetching firewall events for allowed/denied status", map[string]interface{}{
+		"zoneIDs": zoneIDs,
+	})
+
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
 	s := 60 * time.Second
 	now = now.Truncate(s)
@@ -624,13 +792,30 @@ func FetchFirewallEventsAllowedDenied(zoneIDs []string) (*models.CloudflareRespo
 	request.Var("maxtime", now)
 	request.Var("mintime", now1mAgo)
 
+	// Log request variables
+	logging.Info("GraphQL request variables", map[string]interface{}{
+		"zoneIDs": zoneIDs,
+		"limit":   9999,
+		"maxtime": now,
+		"mintime": now1mAgo,
+	})
+
 	ctx := context.Background()
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
 	var resp models.CloudflareResponseLogpushZone
 	if err := graphqlClient.Run(ctx, request, &resp); err != nil {
-		logging.Error(err)
+		// Log the error if request fails
+		logging.Error("Failed to fetch firewall events", map[string]interface{}{
+			"error": err,
+		})
 		return nil, err
 	}
+
+	// Log success after receiving response
+	logging.Info("Successfully fetched firewall events for allowed/denied status", map[string]interface{}{
+		"zoneIDs":  zoneIDs,
+		"response": resp,
+	})
 
 	return &resp, nil
 }
@@ -641,6 +826,13 @@ func MagicTransitTunnelHealthChecksAdaptiveGroups(accountID string) (*models.Clo
 	s := 60 * time.Second
 	now = now.Truncate(s)
 	now1mAgo := now.Add(-60 * time.Second)
+
+	// Log the computed time range
+	logging.Info("Computed time range for Magic Transit query", map[string]interface{}{
+		"now":         now,
+		"now1mAgo":    now1mAgo,
+		"scrapeDelay": viper.GetInt("scrape_delay"),
+	})
 
 	request := graphql.NewRequest(`query($accountID: String!, $limit: Int!, $mintime: Time!, $maxtime: Time!) {
 		viewer {
@@ -678,61 +870,120 @@ func MagicTransitTunnelHealthChecksAdaptiveGroups(accountID string) (*models.Clo
 	request.Var("maxtime", now)
 	request.Var("mintime", now1mAgo)
 
+	// Log the request headers and variables before sending the request
+	logging.Info("GraphQL request details", map[string]interface{}{
+		"accountID": accountID,
+		"limit":     9999,
+		"maxtime":   now,
+		"mintime":   now1mAgo,
+	})
+
 	ctx := context.Background()
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
 	var resp models.CloudflareResponseMagicTransit
 	if err := graphqlClient.Run(ctx, request, &resp); err != nil {
-		logging.Error(err)
+		logging.Error("Failed to execute GraphQL query", map[string]interface{}{
+			"error":     err.Error(),
+			"accountID": accountID,
+			"endpoint":  cfGraphQLEndpoint,
+		})
 		return nil, err
 	}
+
+	// Log successful response
+	logging.Info("Successfully fetched Magic Transit data", map[string]interface{}{
+		"accountID": accountID,
+		"count":     len(resp.Viewer.Accounts),
+	})
+
 	return &resp, nil
 }
 
 // FetchSSLCertificateStatus query cloudflare to check SSL certificate details.
 func FetchSSLCertificateStatus(zoneID []string) (*models.SSLResponse, error) {
-	// Define Cloudflare API endpoint for SSL certificates
-	// url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/ssl/certificate_packs", "627de96e341366cf62d43c2063e8a9ac")
-
-	// Set up the request with the proper headers
+	// Define the HTTP client with a timeout
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 	}
-	req, err := http.NewRequest("GET", "https://api.cloudflare.com/client/v4/zones/627de96e341366cf62d43c2063e8a9ac/ssl/certificate_packs", nil)
-	if err != nil {
-		return nil, err
+
+	// Prepare a combined response
+	var combinedResponse models.SSLResponse
+
+	// Iterate over the zoneIDs
+	for _, zoneID := range zoneID {
+
+		// Construct the URL dynamically for each zoneID
+		url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/ssl/certificate_packs", zoneID)
+
+		// Log API request
+		logging.Info("Fetching SSL certificate status", map[string]interface{}{
+			"zone_id":  zoneID,
+			"endpoint": url,
+		})
+
+		// Create a new HTTP request
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			logging.Error("Failed to create request", map[string]interface{}{
+				"zone_id": zoneID,
+				"error":   err.Error(),
+			})
+			continue
+		}
+
+		if len(viper.GetString("cf_api_token")) > 0 {
+			req.Header.Set("Authorization", "Bearer "+viper.GetString("cf_api_token"))
+		} else {
+			req.Header.Set("X-AUTH-EMAIL", viper.GetString("cf_api_email"))
+			req.Header.Set("X-AUTH-KEY", viper.GetString("cf_api_key"))
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		// Make the API request
+		resp, err := client.Do(req)
+		if err != nil {
+			logging.Error("API request failed", map[string]interface{}{
+				"zone_id": zoneID,
+				"error":   err.Error(),
+			})
+			continue
+		}
+		defer resp.Body.Close()
+
+		// Read the response body
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response for zone %s: %w", zoneID, err)
+		}
+
+		// If the response status is not OK, return an error
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("failed to fetch SSL data for zone %s: %s", zoneID, body)
+		}
+
+		// Unmarshal the response JSON into a temporary struct
+		var tempResponse models.SSLResponse
+		err = json.Unmarshal(body, &tempResponse)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse SSL data for zone %s: %w", zoneID, err)
+		}
+
+		// Inject the ZoneID into each Zone object in the response
+		for i := range tempResponse.Result {
+			tempResponse.Result[i].ZoneID = zoneID
+		}
+
+		// Append the results to the combined response
+		combinedResponse.Result = append(combinedResponse.Result, tempResponse.Result...)
+
+		// Log response status
+		logging.Info("API response received", map[string]interface{}{
+			"zone_id":       zoneID,
+			"status_code":   resp.StatusCode,
+			"response_time": resp.Header.Get("Date"),
+		})
+
 	}
-
-	fmt.Println("reeeeq:::::::::::", req.Body)
-
-	// Set the Authorization header using the API token
-	req.Header.Set("Authorization", "Bearer "+viper.GetString("cf_api_token"))
-	req.Header.Set("Content-Type", "application/json")
-
-	// Make the API request
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	// Read the response body
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	// If the response status is not OK, return an error
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch SSL certificates: %s", body)
-	}
-
-	// Unmarshal the response JSON into the struct
-	var sslCertificate models.SSLResponse
-	err = json.Unmarshal(body, &sslCertificate)
-	if err != nil {
-		return nil, err
-	}
-
-	// Return the parsed response
-	return &sslCertificate, nil
+	// Return the combined response
+	return &combinedResponse, nil
 }
