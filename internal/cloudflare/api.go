@@ -86,7 +86,7 @@ func FetchZoneTotals(zoneIDs []string) (*models.CloudflareResponse, error) {
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
 	s := 60 * time.Second
 	now = now.Truncate(s)
-	now1mAgo := now.Add(-12 * time.Hour)
+	now1mAgo := now.Add(-60 * time.Second)
 
 	request := graphql.NewRequest(`
 	query ($zoneIDs: [String!], $mintime: Time!, $maxtime: Time!, $limit: Int!)  {
