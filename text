@@ -50,7 +50,7 @@
 
 #the goal of such a setup is to ensure scalability, maintainability, and clean separation of concerns.
 
-./connector-service --listen ":8080" --cf_api_token "TorxTj216dkgp0l-CfghGa_kGL5IcX84BidbPFX2" --scrape_delay 300
+./connector-service --listen ":8080" --cf_api_token "qeGgfRR0pzc7pooqbVrFME5wq3lR8N9zoSE9k7RR" --scrape_delay 300
 
 "qeGgfRR0pzc7pooqbVrFME5wq3lR8N9zoSE9k7RR"  
 
@@ -75,3 +75,6 @@ http://localhost:3000
 
 - golint
 golint ./...
+
+
+api key - c5b4557e22d50bcf0c73396c5ba9270f54737

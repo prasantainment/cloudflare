@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/biter777/countries"
 	"github.com/cloudflare/cloudflare-go"
@@ -383,7 +382,7 @@ var (
 			Name: zoneCertificateValidationStatus.String(),
 			Help: "SSL certificate status for a given zone",
 		},
-		[]string{"zone_id", "status", "issuer", "certificate_authority", "expires_on"},
+		[]string{"zone_id", "status", "issuer", "certificate_authority"},
 	)
 )
 
@@ -960,6 +959,13 @@ func normalizeRuleName(initialText string) string {
 
 func addFirewallGroups(z *models.ZoneResp, name string, account string) {
 
+	zoneFirewallAction.With(
+		prometheus.Labels{
+			"zone":    name,
+			"account": account,
+			"action":  "unknown",
+		}).Add(0)
+
 	// Initialize metrics with default values
 	zoneFirewallEventsCount.With(
 		prometheus.Labels{
@@ -1181,18 +1187,6 @@ func addHTTPAdaptiveGroups(z *models.ZoneResp, name string, account string) {
 				"host":    g.Dimensions.ClientRequestHTTPHost,
 			}).Add(float64(g.Count))
 
-	}
-
-	// Process `HTTPRequestsEdgeCountryHost`
-	for _, g := range z.HTTPRequestsEdgeCountryHost {
-		zoneRequestStatusCountryHost.With(
-			prometheus.Labels{
-				"zone":    name,
-				"account": account,
-				"status":  strconv.Itoa(int(g.Dimensions.EdgeResponseStatus)),
-				"country": g.Dimensions.ClientCountryName,
-				"host":    g.Dimensions.ClientRequestHTTPHost,
-			}).Add(float64(g.Count))
 	}
 
 	// Process `HTTPRequestsEdgeCountryHost` for OriginResponseStatus
@@ -1439,7 +1433,7 @@ func fetchSSLCertificateStatus(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 		for _, certificate := range zone.Certificates {
 			// Create a label with necessary details
 			certificateStatus := certificate.Status // active, expired, etc.
-			expiresOn, _ := time.Parse(time.RFC3339, certificate.ExpiresOn)
+			// expiresOn, _ := time.Parse(time.RFC3339, certificate.ExpiresOn)
 
 			// Set the value for the metric
 			zoneCertificateValidation.With(prometheus.Labels{
@@ -1447,7 +1441,7 @@ func fetchSSLCertificateStatus(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 				"status":                certificateStatus,
 				"issuer":                certificate.Issuer,
 				"certificate_authority": certificate.CertificateAuthority,
-				"expires_on":            expiresOn.Format(time.RFC3339),
+				// "expires_on":            expiresOn.Format(time.RFC3339),
 			}).Set(1)
 		}
 	}
