@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -272,9 +273,8 @@ var (
 		[]string{"zone", "account", "load_balancer_name", "pool_name", "origin_name"},
 	)
 
-	// TODO: Update this to counter vec and use counts from the query to add
 	logpushFailedJobsAccount = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: logpushFailedJobsAccountMetricName.String(),
+		Name: "cloudflare_logpush_failed_jobs_account_count",
 		Help: "Number of failed logpush jobs on the account level",
 	},
 		[]string{"account", "destination", "job_id", "final"},
@@ -382,7 +382,7 @@ var (
 			Name: zoneCertificateValidationStatus.String(),
 			Help: "SSL certificate status for a given zone",
 		},
-		[]string{"zone_id", "status", "issuer", "certificate_authority"},
+		[]string{"zone_id", "zone_name", "status", "issuer"},
 	)
 )
 
@@ -561,8 +561,14 @@ func MustRegisterMetrics(deniedMetrics Set) {
 	if !deniedMetrics.Has(zoneEdgeErrorRate) {
 		prometheus.MustRegister(zoneEdgeError)
 	}
+	if !deniedMetrics.Has(zoneOriginErrorRate) {
+		prometheus.MustRegister(zoneOriginError)
+	}
 	if !deniedMetrics.Has(zoneBotRequestsByCountry) {
 		prometheus.MustRegister(zoneBotRequests)
+	}
+	if !deniedMetrics.Has(zoneCacheHitRatio) {
+		prometheus.MustRegister(zoneCacheHit)
 	}
 	if !deniedMetrics.Has(zoneHealthCheckEventsAdaptiveGroupsAvg) {
 		prometheus.MustRegister(zoneHealthCheckEventsAvg)
@@ -624,10 +630,10 @@ func FetchWorkerAnalytics(account cloudflare.Account, wg *sync.WaitGroup) {
 			workerCPUTime.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P75"}).Set(float64(w.Quantiles.CPUTimeP75))
 			workerCPUTime.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P99"}).Set(float64(w.Quantiles.CPUTimeP99))
 			workerCPUTime.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P999"}).Set(float64(w.Quantiles.CPUTimeP999))
-			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P50"}).Set(float64(w.Quantiles.DurationP50))
-			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P75"}).Set(float64(w.Quantiles.DurationP75))
-			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P99"}).Set(float64(w.Quantiles.DurationP99))
-			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P999"}).Set(float64(w.Quantiles.DurationP999))
+			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P50"}).Set(math.Round(float64(w.Quantiles.DurationP50)*1000) / 1000)
+			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P75"}).Set(math.Round(float64(w.Quantiles.DurationP75)*1000) / 1000)
+			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P99"}).Set(math.Round(float64(w.Quantiles.DurationP99)*1000) / 1000)
+			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P999"}).Set(math.Round(float64(w.Quantiles.DurationP999)*1000) / 1000)
 		}
 	}
 }
@@ -688,6 +694,16 @@ func getExcludedZones() []string {
 	return zoneIDs
 }
 
+func allZonesAreEmpty(account []models.LogpushResponse) bool {
+	// Check if all zones are empty
+	for _, zone := range account {
+		if len(zone.LogpushHealthAdaptiveGroups) > 0 { // Replace `SomeField` with an actual field in the ZoneType struct
+			return false // At least one zone contains data
+		}
+	}
+	return true // All zones are empty
+}
+
 // fetchLogpushAnalyticsForAccount expose metrics related to logpush.
 func fetchLogpushAnalyticsForAccount(account cloudflare.Account, wg *sync.WaitGroup) {
 	wg.Add(1)
@@ -702,19 +718,19 @@ func fetchLogpushAnalyticsForAccount(account cloudflare.Account, wg *sync.WaitGr
 			"job_id":      "unknown",
 			"final":       "unknown",
 		}).Add(0)
-		return
 	}
 
 	// Check if the API response is empty and handle accordingly
-	if len(r.Viewer.Accounts) == 0 {
+	if len(r.Viewer.Accounts) == 0 || allZonesAreEmpty(r.Viewer.Accounts) {
 		logpushFailedJobsAccount.With(prometheus.Labels{
 			"account":     account.ID,
 			"destination": "unknown",
 			"job_id":      "unknown",
 			"final":       "unknown",
 		}).Add(0)
-		return
 	}
+
+	fmt.Println("log push adaptive group::::::::", r)
 
 	// Process metrics from the API response
 	for _, acc := range r.Viewer.Accounts {
@@ -1383,9 +1399,23 @@ func fetchLogpushAnalyticsForZone(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 		return
 	}
 
-	r, err := cloudflareAPI.FetchLogpushZone(zoneIDs)
-	if err != nil {
-		return
+	r, err2 := cloudflareAPI.FetchLogpushZone(zoneIDs)
+	if err2 != nil {
+		// Add default values for the metrics in case of an API failure
+		logpushFailedJobsZone.With(prometheus.Labels{
+			"destination": "unknown",
+			"job_id":      "unknown",
+			"final":       "unknown",
+		}).Add(0)
+	}
+
+	// Check if the API response is empty and handle accordingly
+	if len(r.Viewer.Zones) == 0 || allZonesAreEmpty(r.Viewer.Zones) {
+		logpushFailedJobsZone.With(prometheus.Labels{
+			"destination": "unknown",
+			"job_id":      "unknown",
+			"final":       "unknown",
+		}).Add(0)
 	}
 
 	for _, zone := range r.Viewer.Zones {
@@ -1433,15 +1463,14 @@ func fetchSSLCertificateStatus(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 		for _, certificate := range zone.Certificates {
 			// Create a label with necessary details
 			certificateStatus := certificate.Status // active, expired, etc.
-			// expiresOn, _ := time.Parse(time.RFC3339, certificate.ExpiresOn)
 
 			// Set the value for the metric
 			zoneCertificateValidation.With(prometheus.Labels{
-				"zone_id":               zone.ZoneID,
-				"status":                certificateStatus,
-				"issuer":                certificate.Issuer,
-				"certificate_authority": certificate.CertificateAuthority,
-				// "expires_on":            expiresOn.Format(time.RFC3339),
+				"zone_id":   zone.ZoneID,
+				"zone_name": certificate.Hosts[1],
+				"status":    certificateStatus,
+				"issuer":    certificate.Issuer,
+				// "expires_on": certificate.ExpiresOn,
 			}).Set(1)
 		}
 	}

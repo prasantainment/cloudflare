@@ -19,7 +19,6 @@ RUN apk update && apk add ca-certificates
 
 COPY --from=builder /app/cloudflare_exporter cloudflare_exporter
 
-ENV CF_API_KEY ""
-ENV CF_API_EMAIL ""
+ENV CF_API_TOKEN ""
 
 ENTRYPOINT [ "./cloudflare_exporter" ]

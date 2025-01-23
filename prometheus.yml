@@ -4,4 +4,4 @@ global:
 scrape_configs:
   - job_name: 'cloudflare_metrics'  # Custom name for the job
     static_configs:
-      - targets: ['localhost:8080']  # Replace with the address of your service's metrics endpoint
+      - targets: ['localhost:8080']  

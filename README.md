@@ -1,15 +1,6 @@
 # cloudflare
 
 
-## Description
-Prometheus exporter exposing Cloudflare Analytics dashboard data on a per-zone basis, as well as Worker metrics.
-The exporter is also able to scrape Zone metrics by Colocations (https://www.cloudflare.com/network/).
-
-## Grafana Dashboard
-![Dashboard](https://i.ibb.co/HDsqDF1/cf-exporter.png)
-
-Our public dashboard is available at https://grafana.com/grafana/dashboards/13133
-
 
 ## Authentication
 Authentication towards the Cloudflare API can be done in two ways:
@@ -42,7 +33,6 @@ The exporter can be configured using env variables or command flags.
 | `CF_API_EMAIL` |  user email (see https://support.cloudflare.com/hc/en-us/articles/200167836-Managing-API-Tokens-and-Keys) |
 | `CF_API_KEY` |  API key associated with email (`CF_API_EMAIL` is required if this is set)|
 | `CF_API_TOKEN` |  API authentication token (recommended before API key + email. Version 0.0.5+. see https://developers.cloudflare.com/analytics/graphql-api/getting-started/authentication/api-token-auth) |
-| `CF_ZONES` |  (Optional) cloudflare zones to export, comma delimited list of zone ids. If not set, all zones from account are exported |
 | `CF_EXCLUDE_ZONES` |  (Optional) cloudflare zones to exclude, comma delimited list of zone ids. If not set, no zones from account are excluded |
 | `FREE_TIER` | (Optional) scrape only metrics included in free plan. Accepts `true` or `false`, default `false`. |
 | `LISTEN` |  listen on addr:port (default `:8080`), omit addr to listen on all interfaces |
@@ -71,104 +61,88 @@ Note: `ZONE_<name>` configuration is not supported as flag.
 
 ## List of available metrics
 ```
-# HELP cloudflare_worker_cpu_time CPU time quantiles by script name
-# HELP cloudflare_worker_duration Duration quantiles by script name (GB*s)
-# HELP cloudflare_worker_errors_count Number of errors by script name
-# HELP cloudflare_worker_requests_count Number of requests sent to worker by script name
-# HELP cloudflare_zone_bandwidth_cached Cached bandwidth per zone in bytes
-# HELP cloudflare_zone_bandwidth_content_type Bandwidth per zone per content type
-# HELP cloudflare_zone_bandwidth_country Bandwidth per country per zone
-# HELP cloudflare_zone_bandwidth_ssl_encrypted Encrypted bandwidth per zone in bytes
-# HELP cloudflare_zone_bandwidth_total Total bandwidth per zone in bytes
-# HELP cloudflare_zone_colocation_edge_response_bytes Edge response bytes per colocation
-# HELP cloudflare_zone_colocation_visits Total visits per colocation
-# HELP cloudflare_zone_colocation_requests_total Total requests per colocation
-# HELP cloudflare_zone_pageviews_total Pageviews per zone
-# HELP cloudflare_zone_requests_cached Number of cached requests for zone
-# HELP cloudflare_zone_requests_content_type Number of request for zone per content type
-# HELP cloudflare_zone_requests_country Number of request for zone per country
-# HELP cloudflare_zone_requests_origin_status_country_host Count of not cached requests for zone per origin HTTP status per country per host
-# HELP cloudflare_zone_requests_ssl_encrypted Number of encrypted requests for zone
-# HELP cloudflare_zone_requests_status Number of request for zone per HTTP status
-# HELP cloudflare_zone_requests_status_country_host Count of requests for zone per edge HTTP status per country per host
-# HELP cloudflare_zone_requests_browser_map_page_views_count Number of successful requests for HTML pages per zone
-# HELP cloudflare_zone_requests_total Number of requests for zone
-# HELP cloudflare_zone_threats_country Threats per zone per country
-# HELP cloudflare_zone_threats_total Threats per zone
-# HELP cloudflare_zone_uniques_total Uniques per zone
-# HELP cloudflare_zone_pool_health_status Reports the health of a pool, 1 for healthy, 0 for unhealthy
-# HELP cloudflare_zone_pool_requests_total Requests per pool
-# HELP cloudflare_logpush_failed_jobs_account_count Number of failed logpush jobs on the account level
-# HELP cloudflare_logpush_failed_jobs_zone_count Number of failed logpush jobs on the zone level
+"cloudflare_zone_requests_total"
+"cloudflare_zone_requests_cached"
+"cloudflare_zone_requests_ssl_encrypted"
+"cloudflare_zone_requests_content_type"
+"cloudflare_zone_requests_country"
+"cloudflare_zone_requests_status"
+"cloudflare_zone_requests_browser_map_page_views_count"
+"cloudflare_zone_requests_origin_status_country_host"
+"cloudflare_zone_requests_status_country_host"
+"cloudflare_zone_bandwidth_total"
+"cloudflare_zone_bandwidth_cached"
+"cloudflare_zone_bandwidth_ssl_encrypted"
+"cloudflare_zone_bandwidth_content_type"
+"cloudflare_zone_bandwidth_country"
+"cloudflare_zone_threats_total"
+"cloudflare_zone_threats_country"
+"cloudflare_zone_threats_type"
+"cloudflare_zone_pageviews_total"
+"cloudflare_zone_uniques_total"
+"cloudflare_zone_colocation_visits"
+"cloudflare_zone_colocation_edge_response_bytes"
+"cloudflare_zone_colocation_requests_total"
+"cloudflare_zone_firewall_events_count"
+"cloudflare_zone_health_check_events_origin_count"
+"cloudflare_worker_requests_count"
+"cloudflare_worker_errors_count"
+"cloudflare_worker_cpu_time"
+"cloudflare_worker_duration"
+"cloudflare_zone_pool_health_status"
+"cloudflare_zone_pool_requests_total"
+"cloudflare_logpush_failed_jobs_account_count"
+"cloudflare_logpush_failed_jobs_zone_count"
+Newly added_______________________________________________
+"cloudflare_zone_customer_error_4xx_rate"
+"cloudflare_zone_customer_error_5xx_rate"
+"cloudflare_zone_edge_error_rate"
+"cloudflare_zone_origin_error_rate"
+"cloudflare_zone_bot_request_by_country"
+"cloudflare_zone_cache_hit_ratio"
+"cloudflare_zone_health_check_events_avg"
+"cloudflare_zone_firewall_bots_detected"
+"cloudflare_zone_firewall_request_action"
+"cloudflare_zone_request_method_count"
+"cloudflare_magic_transit_active_tunnels"
+"cloudflare_magic_transit_healthy_tunnels"
+"cloudflare_magic_transit_tunnel_failures"
+"cloudflare_magic_transit_edge_colo_count"
+"cloudflare_zone_certificate_validation_status"
 
 
+Docker file
 
-## Docker
-### Build
-Images are available at [Github Container Registry](https://github.com/lablabs/cloudflare-exporter/pkgs/container/cloudflare_exporter)
+download the file 
+go to the file path where the cloudflare-exporter.tar
 
 ```
-docker build -t ghcr.io/lablabs/cloudflare_exporter .
+docker load -i cloudflare-exporter.tar
 ```
 
 ### Run
-Authenticating with email + API key:
-```
-docker run --rm -p 8080:8080 -e CF_API_KEY=${CF_API_KEY} -e CF_API_EMAIL=${CF_API_EMAIL} ghcr.io/lablabs/cloudflare_exporter
-```
 
 API token:
 ```
-docker run --rm -p 8080:8080 -e CF_API_TOKEN=${CF_API_TOKEN} ghcr.io/lablabs/cloudflare_exporter
+docker run -d -p 8080:8080 --name cloudflare-exporter -e CF_API_TOKEN=${CF_API_TOKEN} cloudflare-exporter
 ```
+
+
+Authenticating with email + API key:
+```
+docker run --rm -p 8080:8080 --name cloudflare-exporter CF_API_KEY=${CF_API_KEY} -e CF_API_EMAIL=${CF_API_EMAIL} cloudflare-exporter
+```
+
 
 Configure zones and listening port:
 ```
-docker run --rm -p 8080:8081 -e CF_API_TOKEN=${CF_API_TOKEN} -e CF_ZONES=zoneid1,zoneid2,zoneid3 -e LISTEN=:8081 ghcr.io/lablabs/cloudflare_exporter
+docker run --rm -p 8080:8081 --name cloudflare-exporter CF_API_TOKEN=${CF_API_TOKEN} -e CF_ZONES=zoneid1,zoneid2,zoneid3 cloudflare-exporter
 ```
 
-Disable non-free metrics:
-```
-docker run --rm -p 8080:8080 -e CF_API_TOKEN=${CF_API_TOKEN} -e FREE_TIER=true ghcr.io/lablabs/cloudflare_exporter
-```
-
-Access help:
-```
-docker run --rm -p 8080:8080 -i ghcr.io/lablabs/cloudflare_exporter --help
-```
 
 ## Contributing and reporting issues
 Feel free to create an issue in this repository if you have questions, suggestions or feature requests.
 
-### Validation, linters and pull-requests
 
-We want to provide high quality code and modules. For this reason we are using
-several [pre-commit hooks](.pre-commit-config.yaml) and
-[GitHub Actions workflow](.github/workflows/golangci-lint.yml). A pull-request to the
-master branch will trigger these validations and lints automatically. Please
-check your code before you will create pull-requests. See
-[pre-commit documentation](https://pre-commit.com/) and
-[GitHub Actions documentation](https://docs.github.com/en/actions) for further
-details.
 
-## License
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-See [LICENSE](LICENSE) for full details.
-
-    Licensed to the Apache Software Foundation (ASF) under one
-    or more contributor license agreements.  See the NOTICE file
-    distributed with this work for additional information
-    regarding copyright ownership.  The ASF licenses this file
-    to you under the Apache License, Version 2.0 (the
-    "License"); you may not use this file except in compliance
-    with the License.  You may obtain a copy of the License at
-
-      https://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing,
-    software distributed under the License is distributed on an
-    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-    KIND, either express or implied.  See the License for the
-    specific language governing permissions and limitations
-    under the License.

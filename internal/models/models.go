@@ -291,6 +291,8 @@ type Certificate struct {
 // Zone represents ZoneId and Certificate.
 type Zone struct {
 	ZoneID       string        `json:"zone_id"`
+	ZoneName     string        `json:"zone_name"`
+	AccountName  string        `json:"account_name"`
 	Certificates []Certificate `json:"certificates"`
 }
 

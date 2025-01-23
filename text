@@ -50,19 +50,26 @@
 
 #the goal of such a setup is to ensure scalability, maintainability, and clean separation of concerns.
 
+go build -o connector-service ./cmd/main.go
+
+
 ./connector-service --listen ":8080" --cf_api_token "qeGgfRR0pzc7pooqbVrFME5wq3lR8N9zoSE9k7RR" --scrape_delay 300
 
 "qeGgfRR0pzc7pooqbVrFME5wq3lR8N9zoSE9k7RR"  
 
-go build -o connector-service ./cmd/main.go
+
 
 curl -s http://localhost:8080/metrics | grep cloudflare
 
 sudo prometheus --config.file=/home/prasanna/Documents/cloudflare/prometheus.yml --web.listen-address=":9091"
 
 
-docker run -d -p 8080:8080 --name connector-service \
-  -e CF_API_TOKEN="TorxTj216dkgp0l-CfghGa_kGL5IcX84BidbPFX2" connector-service
+docker run -d -p 8080:8080 --name cloudflare-exporter \
+  -e CF_API_TOKEN="qeGgfRR0pzc7pooqbVrFME5wq3lR8N9zoSE9k7RR" cloudflare-exporter
+
+
+docker run --rm -p 8080:8080 --name cloudflare-exporter \
+  -e CF_API_TOKEN="qeGgfRR0pzc7pooqbVrFME5wq3lR8N9zoSE9k7RR" cloudflare-exporter
 
 
 ./connector-service --listen ":8080" --cf_api_token "Hc-ahsq0Fv7aclAIMykVVDJ5A8ShDawyMMJSCqtF" --cf_zones "automen.io"
@@ -78,3 +85,14 @@ golint ./...
 
 
 api key - c5b4557e22d50bcf0c73396c5ba9270f54737
+
+
+docker run --rm -p 8080:8080 --name cloudflare-exporter -e CF_API_KEY="c5b4557e22d50bcf0c73396c5ba9270f54737" -e CF_API_EMAIL="prasanna.sekar@sacumen.com" cloudflare-exporter
+
+docker :
+
+//create a docker tar file
+docker save -o cloudflare-exporter.tar cloudflare-exporter
+
+// build from tar file
+docker load -i cloudflare-exporter.tar

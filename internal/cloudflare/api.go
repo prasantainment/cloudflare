@@ -720,7 +720,7 @@ func FetchLogpushZone(zoneIDs []string) (*models.CloudflareResponseLogpushZone, 
 	request.Var("mintime", now1mAgo)
 
 	// Log request variables
-	logging.Info("GraphQL request variables", map[string]interface{}{
+	logging.Info("FetchLogpushZone GraphQL request variables", map[string]interface{}{
 		"zoneIDs": zoneIDs,
 		"limit":   9999,
 		"maxtime": now,
