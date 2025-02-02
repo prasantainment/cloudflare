@@ -2,11 +2,13 @@ package metrics
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/biter777/countries"
 	"github.com/cloudflare/cloudflare-go"
@@ -697,8 +699,8 @@ func getExcludedZones() []string {
 func allZonesAreEmpty(account []models.LogpushResponse) bool {
 	// Check if all zones are empty
 	for _, zone := range account {
-		if len(zone.LogpushHealthAdaptiveGroups) > 0 { // Replace `SomeField` with an actual field in the ZoneType struct
-			return false // At least one zone contains data
+		if len(zone.LogpushHealthAdaptiveGroups) > 0 {
+			return false
 		}
 	}
 	return true // All zones are empty
@@ -718,6 +720,11 @@ func fetchLogpushAnalyticsForAccount(account cloudflare.Account, wg *sync.WaitGr
 			"job_id":      "unknown",
 			"final":       "unknown",
 		}).Add(0)
+		return
+	}
+
+	if r.Viewer.Accounts == nil {
+		return
 	}
 
 	// Check if the API response is empty and handle accordingly
@@ -728,6 +735,7 @@ func fetchLogpushAnalyticsForAccount(account cloudflare.Account, wg *sync.WaitGr
 			"job_id":      "unknown",
 			"final":       "unknown",
 		}).Add(0)
+		return
 	}
 
 	fmt.Println("log push adaptive group::::::::", r)
@@ -1464,14 +1472,22 @@ func fetchSSLCertificateStatus(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 			// Create a label with necessary details
 			certificateStatus := certificate.Status // active, expired, etc.
 
+			// Convert the string to a time.Time object
+			expiresOnTime, err := time.Parse(time.RFC3339Nano, certificate.ExpiresOn)
+			if err != nil {
+				log.Fatalf("Error parsing time: %v", err)
+			}
+
+			// Convert to Unix timestamp (float64)
+			expiresOnTimestamp := float64(expiresOnTime.Unix())
+
 			// Set the value for the metric
 			zoneCertificateValidation.With(prometheus.Labels{
 				"zone_id":   zone.ZoneID,
 				"zone_name": certificate.Hosts[1],
 				"status":    certificateStatus,
 				"issuer":    certificate.Issuer,
-				// "expires_on": certificate.ExpiresOn,
-			}).Set(1)
+			}).Set(expiresOnTimestamp)
 		}
 	}
 }
