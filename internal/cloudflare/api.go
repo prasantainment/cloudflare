@@ -310,8 +310,6 @@ func FetchLogpushAccount(accountID string) (*models.CloudflareResponseLogpushAcc
 	now = now.Truncate(s)
 	now1mAgo := now.Add(-60 * time.Second)
 
-	fmt.Println("account id:::::::", accountID)
-
 	request := graphql.NewRequest(`query($accountID: String!, $limit: Int!, $mintime: Time!, $maxtime: Time!) {
 			viewer {
 			accounts(filter: {accountTag : $accountID }) {
@@ -368,13 +366,35 @@ func FetchLogpushAccount(accountID string) (*models.CloudflareResponseLogpushAcc
 		return nil, err
 	}
 
+	// Ensure the response is not nil
+	if resp.Viewer.Accounts == nil {
+		logging.Error("Received nil Accounts from Cloudflare API", map[string]interface{}{
+			"accountID": accountID,
+		})
+		return nil, fmt.Errorf("Cloudflare API returned nil accounts")
+	}
+
+	// Ensure accounts slice is not empty before accessing index 0
+	if len(resp.Viewer.Accounts) == 0 {
+		logging.Error("Received empty accounts list from Cloudflare API", map[string]interface{}{
+			"accountID": accountID,
+		})
+		return nil, fmt.Errorf("Cloudflare API returned empty accounts list")
+	}
+
+	// Ensure LogpushHealthAdaptiveGroups is not nil before accessing it
+	if resp.Viewer.Accounts[0].LogpushHealthAdaptiveGroups == nil {
+		logging.Error("Received nil LogpushHealthAdaptiveGroups from Cloudflare API", map[string]interface{}{
+			"accountID": accountID,
+		})
+		return nil, fmt.Errorf("Cloudflare API returned nil LogpushHealthAdaptiveGroups")
+	}
+
 	// Log the successful response
 	logging.Info("Successfully fetched logpush health data", map[string]interface{}{
 		"logpush_count": len(resp.Viewer.Accounts[0].LogpushHealthAdaptiveGroups),
 		"accountID":     accountID,
 	})
-
-	fmt.Println("logpush:::::::::::::::::::::::::::::::::::::", resp)
 
 	return &resp, nil
 }
@@ -742,8 +762,6 @@ func FetchLogpushZone(zoneIDs []string) (*models.CloudflareResponseLogpushZone, 
 		"zoneIDs":  zoneIDs,
 		"response": resp,
 	})
-
-	fmt.Println("resp:::::::::::::::::::", resp.Viewer)
 
 	return &resp, nil
 }

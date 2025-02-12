@@ -279,7 +279,7 @@ var (
 		Name: "cloudflare_logpush_failed_jobs_account_count",
 		Help: "Number of failed logpush jobs on the account level",
 	},
-		[]string{"account", "destination", "job_id", "final"},
+		[]string{"account", "account_name", "account_type", "destination", "job_id", "final"},
 	)
 
 	logpushFailedJobsZone = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -355,28 +355,28 @@ var (
 			Name: magicTransitActiveTunnels.String(),
 			Help: "Number of active Magic Transit tunnels",
 		},
-		[]string{"account"},
+		[]string{"account", "account_name", "account_type"},
 	)
 	magicTransitHealthyTunnel = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: magicTransitHealthyTunnels.String(),
 			Help: "Number of healthy Magic Transit tunnels",
 		},
-		[]string{"account"},
+		[]string{"account", "account_name", "account_type"},
 	)
 	magicTransitTunnelFailure = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: magicTransitTunnelFailures.String(),
 			Help: "Number of failed Magic Transit tunnels",
 		},
-		[]string{"account"},
+		[]string{"account", "account_name", "account_type"},
 	)
 	magicTransitEdgeColo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: magicTransitEdgeColoCount.String(),
 			Help: "Number of edge colocation sites involved in Magic Transit tunnels",
 		},
-		[]string{"account"},
+		[]string{"account", "account_name", "account_type"},
 	)
 
 	zoneCertificateValidation = prometheus.NewGaugeVec(
@@ -708,46 +708,55 @@ func allZonesAreEmpty(account []models.LogpushResponse) bool {
 
 // fetchLogpushAnalyticsForAccount expose metrics related to logpush.
 func fetchLogpushAnalyticsForAccount(account cloudflare.Account, wg *sync.WaitGroup) {
-	wg.Add(1)
 	defer wg.Done()
+
+	defer func() { // Panic Recovery
+		if r := recover(); r != nil {
+			log.Printf("Recovered from panic in fetchLogpushAnalyticsForAccount: %v", r)
+		}
+	}()
 
 	r, err := cloudflareAPI.FetchLogpushAccount(account.ID)
 	if err != nil {
 		// Add default values for the metrics in case of an API failure
 		logpushFailedJobsAccount.With(prometheus.Labels{
-			"account":     account.ID,
-			"destination": "unknown",
-			"job_id":      "unknown",
-			"final":       "unknown",
+			"account":      account.ID,
+			"account_name": account.Name,
+			"account_type": account.Type,
+			"destination":  "unknown",
+			"job_id":       "unknown",
+			"final":        "unknown",
 		}).Add(0)
 		return
 	}
 
-	if r.Viewer.Accounts == nil {
+	if r == nil || r.Viewer.Accounts == nil {
 		return
 	}
 
 	// Check if the API response is empty and handle accordingly
 	if len(r.Viewer.Accounts) == 0 || allZonesAreEmpty(r.Viewer.Accounts) {
 		logpushFailedJobsAccount.With(prometheus.Labels{
-			"account":     account.ID,
-			"destination": "unknown",
-			"job_id":      "unknown",
-			"final":       "unknown",
+			"account":      account.ID,
+			"account_name": account.Name,
+			"account_type": account.Type,
+			"destination":  "unknown",
+			"job_id":       "unknown",
+			"final":        "unknown",
 		}).Add(0)
 		return
 	}
-
-	fmt.Println("log push adaptive group::::::::", r)
 
 	// Process metrics from the API response
 	for _, acc := range r.Viewer.Accounts {
 		for _, LogpushHealthAdaptiveGroup := range acc.LogpushHealthAdaptiveGroups {
 			logpushFailedJobsAccount.With(prometheus.Labels{
-				"account":     account.ID,
-				"destination": LogpushHealthAdaptiveGroup.Dimensions.DestinationType,
-				"job_id":      strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.JobID),
-				"final":       strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.Final),
+				"account":      account.ID,
+				"account_name": account.Name,
+				"account_type": account.Type,
+				"destination":  LogpushHealthAdaptiveGroup.Dimensions.DestinationType,
+				"job_id":       strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.JobID),
+				"final":        strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.Final),
 			}).Add(float64(LogpushHealthAdaptiveGroup.Count))
 		}
 	}
@@ -760,19 +769,19 @@ func fetchMagicTransitHealth(account cloudflare.Account, wg *sync.WaitGroup) {
 	r, err := cloudflareAPI.MagicTransitTunnelHealthChecksAdaptiveGroups(account.ID)
 	if err != nil {
 		// Add default values for metrics in case of API failure
-		magicTransitActiveTunnel.With(prometheus.Labels{"account": account.ID}).Set(0)
-		magicTransitHealthyTunnel.With(prometheus.Labels{"account": account.ID}).Set(0)
-		magicTransitTunnelFailure.With(prometheus.Labels{"account": account.ID}).Set(0)
-		magicTransitEdgeColo.With(prometheus.Labels{"account": account.ID}).Set(0)
+		magicTransitActiveTunnel.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
+		magicTransitHealthyTunnel.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
+		magicTransitTunnelFailure.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
+		magicTransitEdgeColo.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
 		return
 	}
 
 	// Check if the API response is empty and handle accordingly
 	if len(r.Viewer.Accounts) == 0 {
-		magicTransitActiveTunnel.With(prometheus.Labels{"account": account.ID}).Set(0)
-		magicTransitHealthyTunnel.With(prometheus.Labels{"account": account.ID}).Set(0)
-		magicTransitTunnelFailure.With(prometheus.Labels{"account": account.ID}).Set(0)
-		magicTransitEdgeColo.With(prometheus.Labels{"account": account.ID}).Set(0)
+		magicTransitActiveTunnel.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
+		magicTransitHealthyTunnel.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
+		magicTransitTunnelFailure.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
+		magicTransitEdgeColo.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
 		return
 	}
 
@@ -797,10 +806,10 @@ func fetchMagicTransitHealth(account cloudflare.Account, wg *sync.WaitGroup) {
 	}
 
 	// Set Prometheus metrics
-	magicTransitActiveTunnel.With(prometheus.Labels{"account": account.ID}).Set(activeTunnels)
-	magicTransitHealthyTunnel.With(prometheus.Labels{"account": account.ID}).Set(healthyTunnels)
-	magicTransitTunnelFailure.With(prometheus.Labels{"account": account.ID}).Set(tunnelFailures)
-	magicTransitEdgeColo.With(prometheus.Labels{"account": account.ID}).Set(edgeColoCount)
+	magicTransitActiveTunnel.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(activeTunnels)
+	magicTransitHealthyTunnel.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(healthyTunnels)
+	magicTransitTunnelFailure.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(tunnelFailures)
+	magicTransitEdgeColo.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(edgeColoCount)
 }
 
 func filterNonFreePlanZones(zones []cloudflare.Zone) (filteredZones []cloudflare.Zone) {
@@ -1500,6 +1509,7 @@ func FetchMetrics() {
 	filteredZones := cloudflareAPI.FilterExcludedZones(filterZones(zones, getTargetZones()), getExcludedZones())
 
 	for _, a := range accounts {
+		wg.Add(3) // Add before spawning goroutines
 		go FetchWorkerAnalytics(a, &wg)
 		go fetchLogpushAnalyticsForAccount(a, &wg)
 		go fetchMagicTransitHealth(a, &wg)
@@ -1516,6 +1526,7 @@ func FetchMetrics() {
 		targetZones := filteredZones[:sliceLength]
 		filteredZones = filteredZones[len(targetZones):]
 
+		wg.Add(5) // Add before spawning goroutines
 		go fetchZoneAnalytics(targetZones, &wg)
 		go fetchZoneColocationAnalytics(targetZones, &wg)
 		go fetchLoadBalancerAnalytics(targetZones, &wg)
