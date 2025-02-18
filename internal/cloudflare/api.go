@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	cloudflare "github.com/cloudflare/cloudflare-go"
@@ -13,6 +14,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/lablabs/cloudflare-exporter/internal/models"
+	"github.com/sirupsen/logrus"
 	logging "github.com/sirupsen/logrus"
 )
 
@@ -922,90 +924,203 @@ func MagicTransitTunnelHealthChecksAdaptiveGroups(accountID string) (*models.Clo
 }
 
 // FetchSSLCertificateStatus query cloudflare to check SSL certificate details.
-func FetchSSLCertificateStatus(zoneID []string) (*models.SSLResponse, error) {
-	// Define the HTTP client with a timeout
-	client := &http.Client{
-		Timeout: 30 * time.Second,
+// func FetchSSLCertificateStatus(zoneID []string) (*models.SSLResponse, error) {
+// 	// Define the HTTP client with a timeout
+// 	client := &http.Client{
+// 		Timeout: 30 * time.Second,
+// 	}
+
+// 	// Prepare a combined response
+// 	var combinedResponse models.SSLResponse
+
+// 	// Iterate over the zoneIDs
+// 	for _, zoneID := range zoneID {
+
+// 		// Construct the URL dynamically for each zoneID
+// 		url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/ssl/certificate_packs", zoneID)
+
+// 		// Log API request
+// 		logging.Info("Fetching SSL certificate status", map[string]interface{}{
+// 			"zone_id":  zoneID,
+// 			"endpoint": url,
+// 		})
+
+// 		// Create a new HTTP request
+// 		req, err := http.NewRequest("GET", url, nil)
+// 		if err != nil {
+// 			logging.Error("Failed to create request", map[string]interface{}{
+// 				"zone_id": zoneID,
+// 				"error":   err.Error(),
+// 			})
+// 			continue
+// 		}
+
+// 		if len(viper.GetString("cf_api_token")) > 0 {
+// 			req.Header.Set("Authorization", "Bearer "+viper.GetString("cf_api_token"))
+// 		} else {
+// 			req.Header.Set("X-AUTH-EMAIL", viper.GetString("cf_api_email"))
+// 			req.Header.Set("X-AUTH-KEY", viper.GetString("cf_api_key"))
+// 		}
+// 		req.Header.Set("Content-Type", "application/json")
+
+// 		// Make the API request
+// 		resp, err := client.Do(req)
+// 		if err != nil {
+// 			logging.Error("API request failed", map[string]interface{}{
+// 				"zone_id": zoneID,
+// 				"error":   err.Error(),
+// 			})
+// 			continue
+// 		}
+// 		defer resp.Body.Close()
+
+// 		// Read the response body
+// 		body, err := ioutil.ReadAll(resp.Body)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("failed to read response for zone %s: %w", zoneID, err)
+// 		}
+
+// 		// If the response status is not OK, return an error
+// 		if resp.StatusCode != http.StatusOK {
+// 			return nil, fmt.Errorf("failed to fetch SSL data for zone %s: %s", zoneID, body)
+// 		}
+
+// 		// Unmarshal the response JSON into a temporary struct
+// 		var tempResponse models.SSLResponse
+// 		err = json.Unmarshal(body, &tempResponse)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("failed to parse SSL data for zone %s: %w", zoneID, err)
+// 		}
+
+// 		// Inject the ZoneID into each Zone object in the response
+// 		for i := range tempResponse.Result {
+// 			tempResponse.Result[i].ZoneID = zoneID
+// 		}
+
+// 		// Append the results to the combined response
+// 		combinedResponse.Result = append(combinedResponse.Result, tempResponse.Result...)
+
+// 		// Log response status
+// 		logging.Info("API response received", map[string]interface{}{
+// 			"zone_id":       zoneID,
+// 			"status_code":   resp.StatusCode,
+// 			"response_time": resp.Header.Get("Date"),
+// 		})
+
+// 	}
+// 	// Return the combined response
+// 	return &combinedResponse, nil
+// }
+
+// HTTP client with timeout
+var httpClient = &http.Client{
+	Timeout: 10 * time.Second, // Set a per-request timeout
+}
+
+// FetchSSLCertificateStatus fetches SSL certificate status for multiple zones concurrently
+func FetchSSLCertificateStatus(zoneIDs []string) (*models.SSLResponse, error) {
+	var combinedResponse models.SSLResponse
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	// Use a buffered channel to limit concurrency (avoid hitting rate limits)
+	maxConcurrentRequests := 5
+	sem := make(chan struct{}, maxConcurrentRequests)
+
+	for _, zoneID := range zoneIDs {
+		wg.Add(1)
+		sem <- struct{}{} // Acquire slot
+
+		go func(zoneID string) {
+			defer wg.Done()
+			defer func() { <-sem }() // Release slot
+
+			sslResponse, err := fetchSSLForZone(zoneID)
+			if err != nil {
+				logrus.WithFields(logrus.Fields{
+					"zone_id": zoneID,
+					"error":   err.Error(),
+				}).Error("Failed to fetch SSL data")
+				return
+			}
+
+			mu.Lock()
+			combinedResponse.Result = append(combinedResponse.Result, sslResponse.Result...)
+			mu.Unlock()
+		}(zoneID)
 	}
 
-	// Prepare a combined response
-	var combinedResponse models.SSLResponse
+	wg.Wait()
+	return &combinedResponse, nil
+}
 
-	// Iterate over the zoneIDs
-	for _, zoneID := range zoneID {
+// fetchSSLForZone fetches SSL certificate data for a single zone with retry logic
+func fetchSSLForZone(zoneID string) (*models.SSLResponse, error) {
+	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/ssl/certificate_packs", zoneID)
+	logrus.WithFields(logrus.Fields{"zone_id": zoneID, "endpoint": url}).Info("Fetching SSL certificate status")
 
-		// Construct the URL dynamically for each zoneID
-		url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/ssl/certificate_packs", zoneID)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
 
-		// Log API request
-		logging.Info("Fetching SSL certificate status", map[string]interface{}{
-			"zone_id":  zoneID,
-			"endpoint": url,
-		})
+	// Set authentication headers
+	if len(viper.GetString("cf_api_token")) > 0 {
+		req.Header.Set("Authorization", "Bearer "+viper.GetString("cf_api_token"))
+	} else {
+		req.Header.Set("X-AUTH-EMAIL", viper.GetString("cf_api_email"))
+		req.Header.Set("X-AUTH-KEY", viper.GetString("cf_api_key"))
+	}
+	req.Header.Set("Content-Type", "application/json")
 
-		// Create a new HTTP request
-		req, err := http.NewRequest("GET", url, nil)
+	// Implement retry with exponential backoff
+	maxRetries := 3
+	var body []byte
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		req = req.WithContext(ctx)
+
+		resp, err := httpClient.Do(req)
 		if err != nil {
-			logging.Error("Failed to create request", map[string]interface{}{
-				"zone_id": zoneID,
-				"error":   err.Error(),
-			})
-			continue
-		}
-
-		if len(viper.GetString("cf_api_token")) > 0 {
-			req.Header.Set("Authorization", "Bearer "+viper.GetString("cf_api_token"))
-		} else {
-			req.Header.Set("X-AUTH-EMAIL", viper.GetString("cf_api_email"))
-			req.Header.Set("X-AUTH-KEY", viper.GetString("cf_api_key"))
-		}
-		req.Header.Set("Content-Type", "application/json")
-
-		// Make the API request
-		resp, err := client.Do(req)
-		if err != nil {
-			logging.Error("API request failed", map[string]interface{}{
-				"zone_id": zoneID,
-				"error":   err.Error(),
-			})
+			logrus.WithFields(logrus.Fields{"zone_id": zoneID, "attempt": attempt, "error": err.Error()}).Warn("API request failed, retrying...")
+			time.Sleep(time.Duration(attempt*2) * time.Second)
 			continue
 		}
 		defer resp.Body.Close()
 
-		// Read the response body
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read response for zone %s: %w", zoneID, err)
+		// Handle rate limit (429)
+		if resp.StatusCode == 429 {
+			logrus.WithFields(logrus.Fields{"zone_id": zoneID, "attempt": attempt, "response": resp.Status}).Warn("Rate limited, waiting before retry...")
+			time.Sleep(time.Duration(attempt*3) * time.Second)
+			continue
 		}
 
-		// If the response status is not OK, return an error
+		// Read body
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response: %w", err)
+		}
+
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("failed to fetch SSL data for zone %s: %s", zoneID, body)
+			return nil, fmt.Errorf("failed to fetch SSL data, status: %d, response: %s", resp.StatusCode, string(body))
 		}
 
-		// Unmarshal the response JSON into a temporary struct
-		var tempResponse models.SSLResponse
-		err = json.Unmarshal(body, &tempResponse)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse SSL data for zone %s: %w", zoneID, err)
-		}
-
-		// Inject the ZoneID into each Zone object in the response
-		for i := range tempResponse.Result {
-			tempResponse.Result[i].ZoneID = zoneID
-		}
-
-		// Append the results to the combined response
-		combinedResponse.Result = append(combinedResponse.Result, tempResponse.Result...)
-
-		// Log response status
-		logging.Info("API response received", map[string]interface{}{
-			"zone_id":       zoneID,
-			"status_code":   resp.StatusCode,
-			"response_time": resp.Header.Get("Date"),
-		})
-
+		break // Success, exit retry loop
 	}
-	// Return the combined response
-	return &combinedResponse, nil
+
+	// Parse response
+	var sslResponse models.SSLResponse
+	if err := json.Unmarshal(body, &sslResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// Assign ZoneID to results
+	for i := range sslResponse.Result {
+		sslResponse.Result[i].ZoneID = zoneID
+	}
+
+	logrus.WithFields(logrus.Fields{"zone_id": zoneID, "cert_count": len(sslResponse.Result)}).Info("SSL certificate data fetched successfully")
+	return &sslResponse, nil
 }

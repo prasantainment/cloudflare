@@ -1474,6 +1474,14 @@ func fetchSSLCertificateStatus(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 		return
 	}
 
+	// Set the value for the metric
+	zoneCertificateValidation.With(prometheus.Labels{
+		"zone_id":   "unknown",
+		"zone_name": "unknown",
+		"status":    "unknown",
+		"issuer":    "unknown",
+	}).Set(0)
+
 	// Loop through the response and create Prometheus metrics
 	for _, zone := range r.Result {
 		// Example: Extract certificate data
@@ -1484,21 +1492,29 @@ func fetchSSLCertificateStatus(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 			// Convert the string to a time.Time object
 			expiresOnTime, err := time.Parse(time.RFC3339Nano, certificate.ExpiresOn)
 			if err != nil {
-				log.Fatalf("Error parsing time: %v", err)
+				logging.Warnf("Invalid time format for certificate in zone %s: %v", zone.ZoneID, err)
+				continue
 			}
 
 			// Convert to Unix timestamp (float64)
 			expiresOnTimestamp := float64(expiresOnTime.Unix())
 
+			// Check for zone name
+			zoneName := "unknown"
+			if len(certificate.Hosts) > 0 {
+				zoneName = certificate.Hosts[0]
+			}
+
 			// Set the value for the metric
 			zoneCertificateValidation.With(prometheus.Labels{
 				"zone_id":   zone.ZoneID,
-				"zone_name": certificate.Hosts[1],
+				"zone_name": zoneName,
 				"status":    certificateStatus,
 				"issuer":    certificate.Issuer,
 			}).Set(expiresOnTimestamp)
 		}
 	}
+
 }
 
 // FetchMetrics handle all the functions concurrently to expose metrics.

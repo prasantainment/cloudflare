@@ -67,7 +67,7 @@ curl -s http://localhost:8080/metrics | grep cloudflare
 sudo prometheus --config.file=/home/prasanna/Documents/cloudflare/prometheus.yml --web.listen-address=":9091"
 
 
-docker run -d -rm -p 8080:8080 --name cloudflare-exporter \
+docker run -d --rm -p 8080:8080 --name cloudflare-exporter \
   -e CF_API_TOKEN="qeGgfRR0pzc7pooqbVrFME5wq3lR8N9zoSE9k7RR" cloudflare-exporter
 
 
@@ -76,7 +76,7 @@ docker run -d --restart always -p 8080:8080 --name cloudflare-exporter \
 
 ___________________________________________________________
 
-docker run -d -p 8080:8080 --name cloudflare-exporter \
+docker run -d --rm -p 8080:8080 --name cloudflare-exporter \
   -e CF_API_TOKEN="DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" cloudflare-exporter
 
 docker run --rm -p 8080:8080 --name cloudflare-exporter \
