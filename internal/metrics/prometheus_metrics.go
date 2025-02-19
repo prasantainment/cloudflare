@@ -2,7 +2,6 @@ package metrics
 
 import (
 	"fmt"
-	"log"
 	"math"
 	"os"
 	"strconv"
@@ -614,6 +613,10 @@ func FetchWorkerAnalytics(account cloudflare.Account, wg *sync.WaitGroup) {
 	r, err := cloudflareAPI.FetchWorkerTotals(account.ID)
 	if err != nil {
 		// Return early if API call fails, keeping default metrics
+		logging.Error("FetchWorkerAnalytics: Failed to fetch worker totals", map[string]interface{}{
+			"accountID": account.ID,
+			"error":     err.Error(),
+		})
 		return
 	}
 
@@ -712,12 +715,19 @@ func fetchLogpushAnalyticsForAccount(account cloudflare.Account, wg *sync.WaitGr
 
 	defer func() { // Panic Recovery
 		if r := recover(); r != nil {
-			log.Printf("Recovered from panic in fetchLogpushAnalyticsForAccount: %v", r)
+			logging.Error("Recovered from panic in fetchLogpushAnalyticsForAccount", map[string]interface{}{
+				"accountID": account.ID,
+				"panic":     r,
+			})
 		}
 	}()
 
 	r, err := cloudflareAPI.FetchLogpushAccount(account.ID)
 	if err != nil {
+		logging.Error("Failed to fetch logpush health data", map[string]interface{}{
+			"accountID": account.ID,
+			"error":     err.Error(),
+		})
 		// Add default values for the metrics in case of an API failure
 		logpushFailedJobsAccount.With(prometheus.Labels{
 			"account":      account.ID,
@@ -765,19 +775,29 @@ func fetchLogpushAnalyticsForAccount(account cloudflare.Account, wg *sync.WaitGr
 func fetchMagicTransitHealth(account cloudflare.Account, wg *sync.WaitGroup) {
 	wg.Add(1)
 	defer wg.Done()
+
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Error("Panic in fetchMagicTransitHealth", map[string]interface{}{
+				"accountID": account.ID,
+				"panic":     r,
+			})
+			// Optionally, set default metrics here as well
+		}
+	}()
+
 	// Fetch data from the Magic Transit API
 	r, err := cloudflareAPI.MagicTransitTunnelHealthChecksAdaptiveGroups(account.ID)
 	if err != nil {
-		// Add default values for metrics in case of API failure
-		magicTransitActiveTunnel.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
-		magicTransitHealthyTunnel.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
-		magicTransitTunnelFailure.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
-		magicTransitEdgeColo.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
+		logging.Error("Failed to fetch Magic Transit data", map[string]interface{}{
+			"accountID": account.ID,
+			"error":     err.Error(),
+		})
 		return
 	}
 
 	// Check if the API response is empty and handle accordingly
-	if len(r.Viewer.Accounts) == 0 {
+	if r == nil || len(r.Viewer.Accounts) == 0 {
 		magicTransitActiveTunnel.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
 		magicTransitHealthyTunnel.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
 		magicTransitTunnelFailure.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
@@ -867,6 +887,11 @@ func fetchZoneAnalytics(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 }
 
 func addHTTPGroups(z *models.ZoneResp, name string, account string) {
+
+	if z == nil {
+		logging.Error("Received nil zone response in addHTTPGroups", nil)
+		return
+	}
 
 	// Initialize metrics with default values
 	zoneRequestTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(0)
@@ -992,6 +1017,11 @@ func normalizeRuleName(initialText string) string {
 
 func addFirewallGroups(z *models.ZoneResp, name string, account string) {
 
+	if z == nil {
+		logging.Error("Received nil zone response in Firewall group", nil)
+		return
+	}
+
 	zoneFirewallAction.With(
 		prometheus.Labels{
 			"zone":    name,
@@ -1076,6 +1106,11 @@ func addFirewallGroups(z *models.ZoneResp, name string, account string) {
 
 func addHealthCheckGroups(z *models.ZoneResp, name string, account string) {
 
+	if z == nil {
+		logging.Error("Received nil zone response in Health check group", nil)
+		return
+	}
+
 	// Initialize metrics with default values
 	zoneHealthCheckEventsOriginCount.With(
 		prometheus.Labels{
@@ -1132,6 +1167,12 @@ func addHealthCheckGroups(z *models.ZoneResp, name string, account string) {
 }
 
 func addHTTPAdaptiveGroups(z *models.ZoneResp, name string, account string) {
+
+	if z == nil {
+		logging.Error("Received nil zone response in HTTP Adaptive Group", nil)
+		return
+	}
+
 	// Initialize default values for `zoneRequestOriginStatusCountryHost`
 	zoneRequestOriginStatusCountryHost.With(
 		prometheus.Labels{
@@ -1307,8 +1348,21 @@ func fetchZoneColocationAnalytics(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 
 	r, err := cloudflareAPI.FetchColoTotals(zoneIDs)
 	if err != nil {
+		logging.Error("Failed to fetch Colo totals", map[string]interface{}{
+			"zoneIDs": zoneIDs,
+			"error":   err.Error(),
+		})
 		return
 	}
+
+	// Check if the response structure is valid
+	if r == nil || r.Viewer.Zones == nil {
+		logging.Error("Nil response received for Colo totals", map[string]interface{}{
+			"zoneIDs": zoneIDs,
+		})
+		return
+	}
+
 	for _, z := range r.Viewer.Zones {
 		cg := z.ColoGroups
 		name, account := findZoneAccountName(zones, z.ZoneTag)
@@ -1331,6 +1385,15 @@ func fetchLoadBalancerAnalytics(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 	wg.Add(1)
 	defer wg.Done()
 
+	// Panic recovery to ensure one failing goroutine does not stop the service
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Error("Panic in fetchLoadBalancerAnalytics", map[string]interface{}{
+				"panic": r,
+			})
+		}
+	}()
+
 	// None of the below referenced metrics are available in the free tier
 	if viper.GetBool("free_tier") {
 		return
@@ -1343,8 +1406,13 @@ func fetchLoadBalancerAnalytics(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 
 	l, err := cloudflareAPI.FetchLoadBalancerTotals(zoneIDs)
 	if err != nil {
+		logging.Error("Failed to fetch Load Balancer totals", map[string]interface{}{
+			"zoneIDs": zoneIDs,
+			"error":   err.Error(),
+		})
 		return
 	}
+
 	for _, lb := range l.Viewer.Zones {
 		name, account := findZoneAccountName(zones, lb.ZoneTag)
 		lb := lb
@@ -1354,6 +1422,12 @@ func fetchLoadBalancerAnalytics(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 }
 
 func addLoadBalancingRequestsAdaptiveGroups(z *models.LbResp, name string, account string) {
+
+	if z == nil {
+		logging.Warn("Received nil zone response in addLoadBalancingRequestsAdaptiveGroups", nil)
+		return
+	}
+
 	if len(z.LoadBalancingRequestsAdaptiveGroups) == 0 {
 		// Default values in case of no data
 		poolRequestsTotal.With(
@@ -1379,6 +1453,12 @@ func addLoadBalancingRequestsAdaptiveGroups(z *models.LbResp, name string, accou
 }
 
 func addLoadBalancingRequestsAdaptive(z *models.LbResp, name string, account string) {
+
+	if z == nil {
+		logging.Warn("Received nil zone response in addLoadBalancingRequestsAdaptive", nil)
+		return
+	}
+
 	if len(z.LoadBalancingRequestsAdaptive) == 0 {
 		// Default values in case of no data
 		poolHealthStatus.With(
@@ -1424,6 +1504,7 @@ func fetchLogpushAnalyticsForZone(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 			"job_id":      "unknown",
 			"final":       "unknown",
 		}).Add(0)
+		return
 	}
 
 	// Check if the API response is empty and handle accordingly
@@ -1433,6 +1514,7 @@ func fetchLogpushAnalyticsForZone(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 			"job_id":      "unknown",
 			"final":       "unknown",
 		}).Add(0)
+		return
 	}
 
 	for _, zone := range r.Viewer.Zones {
@@ -1470,7 +1552,15 @@ func fetchSSLCertificateStatus(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 	// Fetch SSL certificate status for the zones
 	r, err := cloudflareAPI.FetchSSLCertificateStatus(zoneIDs)
 	if err != nil {
-		logging.Error("Error fetching SSL certificate status: ", err)
+		logging.Error("Error fetching SSL certificate status", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return
+	}
+	if r == nil {
+		logging.Error("Received nil response from FetchSSLCertificateStatus", map[string]interface{}{
+			"zoneIDs": zoneIDs,
+		})
 		return
 	}
 
@@ -1502,7 +1592,12 @@ func fetchSSLCertificateStatus(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 			// Check for zone name
 			zoneName := "unknown"
 			if len(certificate.Hosts) > 0 {
-				zoneName = certificate.Hosts[0]
+				// If the first element is a wildcard and there's a second element, use that.
+				if strings.HasPrefix(certificate.Hosts[0], "*.") && len(certificate.Hosts) > 1 {
+					zoneName = certificate.Hosts[1]
+				} else {
+					zoneName = certificate.Hosts[0]
+				}
 			}
 
 			// Set the value for the metric
@@ -1520,8 +1615,22 @@ func fetchSSLCertificateStatus(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 // FetchMetrics handle all the functions concurrently to expose metrics.
 func FetchMetrics() {
 	var wg sync.WaitGroup
-	zones := cloudflareAPI.FetchZones()
-	accounts := cloudflareAPI.FetchAccounts()
+	zones, err := cloudflareAPI.FetchZones()
+	if err != nil {
+		logging.Error("Failed to fetch zones from Cloudflare API", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return // or handle the error appropriately
+	}
+
+	accounts, err := cloudflareAPI.FetchAccounts()
+	if err != nil {
+		logging.Error("Failed to fetch accounts from Cloudflare API", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return // or handle the error appropriately
+	}
+
 	filteredZones := cloudflareAPI.FilterExcludedZones(filterZones(zones, getTargetZones()), getExcludedZones())
 
 	for _, a := range accounts {
