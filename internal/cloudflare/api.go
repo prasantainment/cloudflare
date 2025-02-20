@@ -69,8 +69,7 @@ func FetchZones() ([]cloudflare.Zone, error) {
 	logging.Info("Fetching zones from Cloudflare API", nil)
 
 	// Create a context with timeout to avoid hanging requests.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	// Attempt to fetch zones with retry logic.
 	var zones []cloudflare.Zone
@@ -114,8 +113,7 @@ func FetchAccounts() ([]cloudflare.Account, error) {
 	}
 
 	// Create a context with timeout to avoid hanging requests.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	a, _, err := api.Accounts(ctx, cloudflare.AccountsListParams{PaginationOptions: cloudflare.PaginationOptions{PerPage: 100}})
 	if err != nil {
@@ -337,8 +335,7 @@ func FetchWorkerTotals(accountID string) (*models.CloudflareResponseAccts, error
 	})
 
 	// Use a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
 	var resp models.CloudflareResponseAccts
@@ -412,8 +409,7 @@ func FetchLogpushAccount(accountID string) (*models.CloudflareResponseLogpushAcc
 	})
 
 	// Use a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
 	var resp models.CloudflareResponseLogpushAccount
@@ -528,8 +524,7 @@ func FetchFirewallRules(zoneID string) map[string]string {
 	})
 
 	// Use a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	listOfRules, _, err := api.FirewallRules(ctx,
 		cloudflare.ZoneIdentifier(zoneID),
@@ -639,8 +634,7 @@ func FetchColoTotals(zoneIDs []string) (*models.CloudflareResponseColo, error) {
 	})
 
 	// Use a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
 	var resp models.CloudflareResponseColo
@@ -741,8 +735,7 @@ func FetchLoadBalancerTotals(zoneIDs []string) (*models.CloudflareResponseLb, er
 	})
 
 	// Use a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
 	var resp models.CloudflareResponseLb
@@ -819,8 +812,7 @@ func FetchLogpushZone(zoneIDs []string) (*models.CloudflareResponseLogpushZone, 
 	})
 
 	// Use a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
 	var resp models.CloudflareResponseLogpushZone
@@ -895,8 +887,7 @@ func FetchFirewallEventsAllowedDenied(zoneIDs []string) (*models.CloudflareRespo
 	})
 
 	// Use a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
 	var resp models.CloudflareResponseLogpushZone
@@ -976,8 +967,7 @@ func MagicTransitTunnelHealthChecksAdaptiveGroups(accountID string) (*models.Clo
 	})
 
 	// Use a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
 	var resp models.CloudflareResponseMagicTransit
@@ -1157,8 +1147,7 @@ func fetchSSLForZone(zoneID string) (*models.SSLResponse, error) {
 	var body []byte
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+		ctx := context.Background()
 		req = req.WithContext(ctx)
 
 		resp, err := httpClient.Do(req)
