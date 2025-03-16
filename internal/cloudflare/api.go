@@ -3,9 +3,12 @@ package cloudflare
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,7 +34,7 @@ var (
 // 		api, err = cloudflare.New(viper.GetString("cf_api_key"), viper.GetString("cf_api_email"))
 // 	}
 // 	if err != nil {
-// 		logging.Fatal("Failed to initialize Cloudflare API client", map[string]interface{}{
+// 		logging.Error("Failed to initialize Cloudflare API client", map[string]interface{}{
 // 			"error": err.Error(),
 // 		})
 // 	}
@@ -41,7 +44,7 @@ var (
 // 	ctx := context.Background()
 // 	z, err := api.ListZones(ctx)
 // 	if err != nil {
-// 		logging.Fatal("Failed to fetch zones from Cloudflare API", map[string]interface{}{
+// 		logging.Error("Failed to fetch zones from Cloudflare API", map[string]interface{}{
 // 			"error": err.Error(),
 // 		})
 // 	}
@@ -53,7 +56,7 @@ func FetchZones() ([]cloudflare.Zone, error) {
 	var api *cloudflare.API
 	var err error
 
-	// Initialize the API client using the appropriate credentials.
+	// Initialize the API client with appropriate credentials.
 	if token := viper.GetString("cf_api_token"); token != "" {
 		api, err = cloudflare.NewWithAPIToken(token)
 	} else {
@@ -68,34 +71,56 @@ func FetchZones() ([]cloudflare.Zone, error) {
 
 	logging.Info("Fetching zones from Cloudflare API", nil)
 
-	// Create a context with timeout to avoid hanging requests.
-	ctx := context.Background()
-
-	// Attempt to fetch zones with retry logic.
+	// Retry mechanism with exponential backoff
+	const maxRetries = 3
 	var zones []cloudflare.Zone
-	maxRetries := 3
+
 	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// Create a new context with a 30s timeout for each attempt
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
 		zones, err = api.ListZones(ctx)
 		if err == nil {
-			break
+			logging.Info("Successfully fetched zones", map[string]interface{}{
+				"zone_count": len(zones),
+			})
+			return zones, nil
 		}
-		logging.Warn("Failed to fetch zones from Cloudflare API, retrying...", map[string]interface{}{
-			"attempt": attempt,
-			"error":   err.Error(),
-		})
-		time.Sleep(time.Duration(attempt) * time.Second) // Simple backoff delay.
-	}
-	if err != nil {
-		logging.Error("Failed to fetch zones from Cloudflare API after retries", map[string]interface{}{
-			"error": err.Error(),
-		})
-		return nil, err
+
+		// Handle timeout-specific errors separately
+		if errors.Is(err, context.DeadlineExceeded) {
+			logging.Warn("Cloudflare API request timed out", map[string]interface{}{
+				"attempt": attempt,
+				"error":   err.Error(),
+			})
+		} else if nErr, ok := err.(net.Error); ok && nErr.Timeout() {
+			logging.Warn("Network timeout while fetching zones", map[string]interface{}{
+				"attempt": attempt, "error": err.Error(),
+			})
+		} else if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "temporary") {
+			logging.Warn("Possible DNS failure or no internet connection", map[string]interface{}{
+				"attempt": attempt, "error": err.Error(),
+			})
+		} else {
+			logging.Warn("Failed to fetch zones from Cloudflare API, retrying...", map[string]interface{}{
+				"attempt": attempt,
+				"error":   err.Error(),
+			})
+		}
+
+		// Exponential backoff (2s, 4s, 6s)
+		time.Sleep(time.Duration(attempt*2) * time.Second)
 	}
 
-	return zones, nil
+	// Final failure after retries
+	logging.Error("Exceeded max retries for fetching zones from Cloudflare API", map[string]interface{}{
+		"error": err.Error(),
+	})
+	return nil, err
 }
 
-// FetchAccounts function return account in an array.
+// FetchAccounts function returns accounts in an array with retry logic.
 func FetchAccounts() ([]cloudflare.Account, error) {
 	var api *cloudflare.API
 	var err error
@@ -106,30 +131,84 @@ func FetchAccounts() ([]cloudflare.Account, error) {
 	}
 	// Handle API client initialization error
 	if err != nil {
-		logging.Fatal("Failed to initialize Cloudflare API client", map[string]interface{}{
+		logging.Error("Failed to initialize Cloudflare API client", map[string]interface{}{
 			"error": err.Error(),
 		})
 		return nil, err
 	}
 
-	// Create a context with timeout to avoid hanging requests.
-	ctx := context.Background()
+	// Define retry parameters
+	const maxRetries = 3
+	var accounts []cloudflare.Account
 
-	a, _, err := api.Accounts(ctx, cloudflare.AccountsListParams{PaginationOptions: cloudflare.PaginationOptions{PerPage: 100}})
-	if err != nil {
-		logging.Fatal("Failed to fetch accounts from Cloudflare API", map[string]interface{}{
-			"error": err.Error(),
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// Create a context with timeout to prevent hanging requests
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		accounts, _, err = api.Accounts(ctx, cloudflare.AccountsListParams{
+			PaginationOptions: cloudflare.PaginationOptions{PerPage: 100},
 		})
-		return nil, err
+		if err == nil {
+			// Log success and return
+			logging.Info("Successfully fetched accounts", map[string]interface{}{
+				"account_count": len(accounts),
+			})
+			return accounts, nil
+		}
+
+		// Log retry attempt
+		logging.Warn("Failed to fetch accounts from Cloudflare API, retrying...", map[string]interface{}{
+			"attempt": attempt,
+			"error":   err.Error(),
+		})
+
+		// Exponential backoff
+		time.Sleep(time.Duration(attempt*2) * time.Second)
 	}
 
-	// Log the number of accounts fetched
-	logging.Info("Successfully fetched accounts", map[string]interface{}{
-		"account_count": len(a),
+	// Log final failure
+	logging.Error("Exceeded max retries for fetching accounts from Cloudflare API", map[string]interface{}{
+		"error": err.Error(),
 	})
-
-	return a, nil
+	return nil, err
 }
+
+// FetchAccounts function return account in an array.
+// func FetchAccounts() ([]cloudflare.Account, error) {
+// 	var api *cloudflare.API
+// 	var err error
+// 	if len(viper.GetString("cf_api_token")) > 0 {
+// 		api, err = cloudflare.NewWithAPIToken(viper.GetString("cf_api_token"))
+// 	} else {
+// 		api, err = cloudflare.New(viper.GetString("cf_api_key"), viper.GetString("cf_api_email"))
+// 	}
+// 	// Handle API client initialization error
+// 	if err != nil {
+// 		logging.Error("Failed to initialize Cloudflare API client", map[string]interface{}{
+// 			"error": err.Error(),
+// 		})
+// 		return nil, err
+// 	}
+
+// 	// Create a context with timeout to avoid hanging requests.
+// 	ctx := context.Background()
+
+// 	a, _, err := api.Accounts(ctx, cloudflare.AccountsListParams{PaginationOptions: cloudflare.PaginationOptions{PerPage: 100}})
+// 	if err != nil {
+// 		logging.Error("Failed to fetch accounts from Cloudflare API", map[string]interface{}{
+// 			"error": err.Error(),
+// 		})
+// 		return nil, err
+// 	}
+
+// 	// Log the number of accounts fetched
+// 	logging.Info("Successfully fetched accounts", map[string]interface{}{
+// 		"account_count": len(a),
+// 	})
+
+// 	return a, nil
+// }
 
 // FetchZoneTotals retrieves aggregated metrics for the specified zone IDs, including topics like
 // httpRequests1mGroups, firewallEventsAdaptiveGroups, httpRequestsAdaptiveGroups, and healthCheckEventsAdaptiveGroups.
@@ -530,7 +609,7 @@ func FetchFirewallRules(zoneID string) map[string]string {
 		cloudflare.ZoneIdentifier(zoneID),
 		cloudflare.FirewallRuleListParams{})
 	if err != nil {
-		logging.Fatal(err)
+		logging.Error(err)
 	}
 	firewallRulesMap := make(map[string]string)
 
@@ -540,7 +619,7 @@ func FetchFirewallRules(zoneID string) map[string]string {
 
 	listOfRulesets, err := api.ListRulesets(ctx, cloudflare.ZoneIdentifier(zoneID), cloudflare.ListRulesetsParams{})
 	if err != nil {
-		logging.Fatal(err)
+		logging.Error(err)
 	}
 
 	logging.Info("Fetched rulesets", map[string]interface{}{
@@ -823,8 +902,7 @@ func FetchLogpushZone(zoneIDs []string) (*models.CloudflareResponseLogpushZone, 
 
 	// Log success after receiving response
 	logging.Info("Successfully fetched Logpush zone data", map[string]interface{}{
-		"zoneIDs":  zoneIDs,
-		"response": resp,
+		"zoneIDs": zoneIDs,
 	})
 
 	return &resp, nil
@@ -904,6 +982,8 @@ func FetchFirewallEventsAllowedDenied(zoneIDs []string) (*models.CloudflareRespo
 		"zoneIDs":  zoneIDs,
 		"response": resp,
 	})
+
+	fmt.Println("called:::::::::::::::::::::::::::")
 
 	return &resp, nil
 }

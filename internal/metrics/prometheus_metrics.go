@@ -1614,21 +1614,73 @@ func fetchSSLCertificateStatus(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 
 // FetchMetrics handle all the functions concurrently to expose metrics.
 func FetchMetrics() {
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Error("Panic in FetchMetrics", map[string]interface{}{
+				"error": r,
+			})
+		}
+	}()
+
+	var zones []cloudflare.Zone
+	var accounts []cloudflare.Account
+	var err error
+
 	var wg sync.WaitGroup
-	zones, err := cloudflareAPI.FetchZones()
-	if err != nil {
-		logging.Error("Failed to fetch zones from Cloudflare API", map[string]interface{}{
-			"error": err.Error(),
+	const maxRetries = 10
+	retryDelay := 5 * time.Second
+
+	// Retry fetching zones with a limit
+	for i := 1; i <= maxRetries; i++ {
+		zones, err = cloudflareAPI.FetchZones()
+		if err == nil {
+			logging.Info("Successfully fetched zones", map[string]interface{}{
+				"zone_count": len(zones),
+			})
+			break
+		}
+
+		logging.Warn("Failed to fetch zones, retrying...", map[string]interface{}{
+			"attempt": i,
+			"error":   err.Error(),
 		})
-		return // or handle the error appropriately
+		time.Sleep(retryDelay)
+		retryDelay *= 2 // Exponential backoff
+
+		if retryDelay > 1*time.Minute {
+			retryDelay = 1 * time.Minute // Cap backoff
+		}
 	}
 
-	accounts, err := cloudflareAPI.FetchAccounts()
-	if err != nil {
-		logging.Error("Failed to fetch accounts from Cloudflare API", map[string]interface{}{
-			"error": err.Error(),
+	if len(zones) == 0 {
+		logging.Error("Failed to fetch zones after retries, proceeding with empty zones")
+	}
+
+	// Reset retry delay for accounts
+	retryDelay = 5 * time.Second
+	for i := 1; i <= maxRetries; i++ {
+		accounts, err = cloudflareAPI.FetchAccounts()
+		if err == nil {
+			logging.Info("Successfully fetched accounts", map[string]interface{}{
+				"account_count": len(accounts),
+			})
+			break
+		}
+
+		logging.Warn("Failed to fetch accounts, retrying...", map[string]interface{}{
+			"attempt": i,
+			"error":   err.Error(),
 		})
-		return // or handle the error appropriately
+		time.Sleep(retryDelay)
+		retryDelay *= 2
+
+		if retryDelay > 1*time.Minute {
+			retryDelay = 1 * time.Minute
+		}
+	}
+
+	if len(accounts) == 0 {
+		logging.Error("Failed to fetch accounts after retries, proceeding with empty accounts")
 	}
 
 	filteredZones := cloudflareAPI.FilterExcludedZones(filterZones(zones, getTargetZones()), getExcludedZones())

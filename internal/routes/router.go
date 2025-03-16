@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"context"
+	"log"
 	"strings"
 	"time"
 
@@ -57,23 +59,43 @@ func RunExporter() {
 	r.GET("/health", handlers.HealthCheck)
 	logging.Info("Health check endpoint registered at /health")
 
-	// Start exporting metrics and periodically fetch them
-	go func() {
-		for {
-
-			// Log periodic fetch
-			logging.Info("Fetching metrics at interval", map[string]interface{}{"interval": "1 minute"})
-
-			// Perform metrics fetch logic
-			go metrics.FetchMetrics()
-			// Sleep for a certain interval before fetching metrics again
-			time.Sleep(time.Minute)
-		}
-	}()
+	// Start the improved periodic metric fetcher
+	go startMetricFetcher()
 
 	// Start the Gin server
 	logging.Info("Beginning to serve metrics on ", viper.GetString("listen"))
 	if err := r.Run(viper.GetString("listen")); err != nil {
 		logging.Fatal("Error starting server: ", map[string]interface{}{"error": err.Error()})
+	}
+}
+
+func startMetricFetcher() {
+	for {
+		log.Println("Starting metrics fetch...")
+
+		FetchMetricsWithTimeout() // Runs with a timeout
+
+		// Sleep before the next fetch to maintain exactly 1-minute intervals
+		logging.Info("Waiting for next scheduled fetch...")
+		time.Sleep(time.Minute)
+	}
+}
+
+// FetchMetricsWithTimeout ensures it doesn't exceed a given timeout
+func FetchMetricsWithTimeout() {
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second) // Timeout set
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		metrics.FetchMetrics()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		logging.Info("Metrics fetched successfully")
+	case <-ctx.Done():
+		logging.Info("FetchMetrics timed out, canceling execution...")
 	}
 }
