@@ -62,6 +62,10 @@ func Execute() error {
 	viper.BindEnv("metrics_denylist")
 	viper.SetDefault("metrics_denylist", "")
 
+	flags.Bool("exclude_host", false, "metrics data without host when exclude")
+	viper.BindEnv("exclude_host")
+	viper.SetDefault("exclude_host", false)
+
 	viper.BindPFlags(flags)
 	return cmd.Execute()
 }

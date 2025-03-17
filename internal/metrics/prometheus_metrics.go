@@ -18,6 +18,16 @@ import (
 	"github.com/spf13/viper"
 )
 
+var exclude_host bool // Declare globally
+
+func init() {
+	viper.SetDefault("exclude_host", false) // Set a default value
+	viper.AutomaticEnv()                    // Load environment variables
+
+	exclude_host = viper.GetBool("exclude_host") // Read from config/env
+	fmt.Println("Global exclude_host:", exclude_host)
+}
+
 // MetricName represent metric name
 type MetricName string
 
@@ -134,17 +144,17 @@ var (
 	}, []string{"zone", "account", "family"},
 	)
 
-	zoneRequestOriginStatusCountryHost = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: zoneRequestOriginStatusCountryHostMetricName.String(),
-		Help: "Count of not cached requests for zone per origin HTTP status per country per host",
-	}, []string{"zone", "account", "status", "country", "host"},
-	)
+	// zoneRequestOriginStatusCountryHost = prometheus.NewCounterVec(prometheus.CounterOpts{
+	// 	Name: zoneRequestOriginStatusCountryHostMetricName.String(),
+	// 	Help: "Count of not cached requests for zone per origin HTTP status per country per host",
+	// }, []string{"zone", "account", "status", "country", "host"},
+	// )
 
-	zoneRequestStatusCountryHost = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: zoneRequestStatusCountryHostMetricName.String(),
-		Help: "Count of requests for zone per edge HTTP status per country per host",
-	}, []string{"zone", "account", "status", "country", "host"},
-	)
+	// zoneRequestStatusCountryHost = prometheus.NewCounterVec(prometheus.CounterOpts{
+	// 	Name: zoneRequestStatusCountryHostMetricName.String(),
+	// 	Help: "Count of requests for zone per edge HTTP status per country per host",
+	// }, []string{"zone", "account", "status", "country", "host"},
+	// )
 
 	zoneBandwidthTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: zoneBandwidthTotalMetricName.String(),
@@ -206,23 +216,23 @@ var (
 	}, []string{"zone", "account"},
 	)
 
-	zoneColocationVisits = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: zoneColocationVisitsMetricName.String(),
-		Help: "Total visits per colocation",
-	}, []string{"zone", "account", "colocation", "host"},
-	)
+	// zoneColocationVisits = prometheus.NewCounterVec(prometheus.CounterOpts{
+	// 	Name: zoneColocationVisitsMetricName.String(),
+	// 	Help: "Total visits per colocation",
+	// }, []string{"zone", "account", "colocation", "host"},
+	// )
 
-	zoneColocationEdgeResponseBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: zoneColocationEdgeResponseBytesMetricName.String(),
-		Help: "Edge response bytes per colocation",
-	}, []string{"zone", "account", "colocation", "host"},
-	)
+	// zoneColocationEdgeResponseBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
+	// 	Name: zoneColocationEdgeResponseBytesMetricName.String(),
+	// 	Help: "Edge response bytes per colocation",
+	// }, []string{"zone", "account", "colocation", "host"},
+	// )
 
-	zoneColocationRequestsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: zoneColocationRequestsTotalMetricName.String(),
-		Help: "Total requests per colocation",
-	}, []string{"zone", "account", "colocation", "host"},
-	)
+	// zoneColocationRequestsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+	// 	Name: zoneColocationRequestsTotalMetricName.String(),
+	// 	Help: "Total requests per colocation",
+	// }, []string{"zone", "account", "colocation", "host"},
+	// )
 
 	zoneFirewallEventsCount = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: zoneFirewallEventsCountMetricName.String(),
@@ -290,35 +300,35 @@ var (
 
 	// added
 
-	zoneCustomerError4xx = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: zoneCustomerError4xxRate.String(),
-		Help: "Number of error rates of 4xx",
-	}, []string{"zone", "account", "status", "country", "host"},
-	)
+	// zoneCustomerError4xx = prometheus.NewCounterVec(prometheus.CounterOpts{
+	// 	Name: zoneCustomerError4xxRate.String(),
+	// 	Help: "Number of error rates of 4xx",
+	// }, []string{"zone", "account", "status", "country", "host"},
+	// )
 
-	zoneCustomerError5xx = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: zoneCustomerError5xxRate.String(),
-		Help: "Number of error rates of 5xx",
-	}, []string{"zone", "account", "status", "country", "host"},
-	)
+	// zoneCustomerError5xx = prometheus.NewCounterVec(prometheus.CounterOpts{
+	// 	Name: zoneCustomerError5xxRate.String(),
+	// 	Help: "Number of error rates of 5xx",
+	// }, []string{"zone", "account", "status", "country", "host"},
+	// )
 
-	zoneEdgeError = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: zoneEdgeErrorRate.String(),
-		Help: "Number of error rate of 4xx and 5xx",
-	}, []string{"zone", "account", "status", "country", "host"},
-	)
+	// zoneEdgeError = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	// 	Name: zoneEdgeErrorRate.String(),
+	// 	Help: "Number of error rate of 4xx and 5xx",
+	// }, []string{"zone", "account", "status", "country", "host"},
+	// )
 
-	zoneOriginError = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: zoneOriginErrorRate.String(),
-		Help: "Number of error rates of 4xx and 5xx in HTTP requests",
-	}, []string{"zone", "account", "status", "country", "host"},
-	)
+	// zoneOriginError = prometheus.NewCounterVec(prometheus.CounterOpts{
+	// 	Name: zoneOriginErrorRate.String(),
+	// 	Help: "Number of error rates of 4xx and 5xx in HTTP requests",
+	// }, []string{"zone", "account", "status", "country", "host"},
+	// )
 
-	zoneBotRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: zoneBotRequestsByCountry.String(),
-		Help: "Number of bot requests over country",
-	}, []string{"zone", "account", "country", "action", "rule", "host"},
-	)
+	// zoneBotRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
+	// 	Name: zoneBotRequestsByCountry.String(),
+	// 	Help: "Number of bot requests over country",
+	// }, []string{"zone", "account", "country", "action", "rule"},
+	// )
 
 	zoneCacheHit = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: zoneCacheHitRatio.String(),
@@ -332,11 +342,11 @@ var (
 	}, []string{"zone", "account"},
 	)
 
-	zoneFirewallBotsDetected = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: zoneFirewallBotsDetectedSource.String(),
-		Help: "Number of bot requests over country",
-	}, []string{"zone", "account", "source", "action", "rule", "host"},
-	)
+	// zoneFirewallBotsDetected = prometheus.NewCounterVec(prometheus.CounterOpts{
+	// 	Name: zoneFirewallBotsDetectedSource.String(),
+	// 	Help: "Number of bot requests over country",
+	// }, []string{"zone", "account", "source", "action", "rule", "host"},
+	// )
 
 	zoneFirewallAction = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: zoneFirewallRequestAction.String(),
@@ -386,6 +396,16 @@ var (
 		[]string{"zone_id", "zone_name", "status", "issuer"},
 	)
 )
+
+func getLabels(baseLabels prometheus.Labels, hostValue string) prometheus.Labels {
+
+	// Check if "exclude_host" is false and add "host" dynamically
+	if !exclude_host {
+		baseLabels["host"] = hostValue
+	}
+
+	return baseLabels
+}
 
 // BuildAllMetricsSet helps to build all metric and return as Set.
 func BuildAllMetricsSet() Set {
@@ -454,6 +474,18 @@ func BuildDeniedMetricsSet(metricsDenylist []string) (Set, error) {
 	return deniedMetricsSet, nil
 }
 
+var zoneRequestOriginStatusCountryHost *prometheus.CounterVec
+var zoneRequestStatusCountryHost *prometheus.CounterVec
+var zoneColocationVisits *prometheus.CounterVec
+var zoneColocationEdgeResponseBytes *prometheus.CounterVec
+var zoneColocationRequestsTotal *prometheus.CounterVec
+var zoneCustomerError4xx *prometheus.CounterVec
+var zoneCustomerError5xx *prometheus.CounterVec
+var zoneEdgeError *prometheus.GaugeVec
+var zoneOriginError *prometheus.CounterVec
+var zoneFirewallBotsDetected *prometheus.CounterVec
+var zoneBotRequests *prometheus.CounterVec
+
 // MustRegisterMetrics register the metrics.
 func MustRegisterMetrics(deniedMetrics Set) {
 	if !deniedMetrics.Has(zoneRequestTotalMetricName) {
@@ -477,12 +509,41 @@ func MustRegisterMetrics(deniedMetrics Set) {
 	if !deniedMetrics.Has(zoneRequestBrowserMapMetricName) {
 		prometheus.MustRegister(zoneRequestBrowserMap)
 	}
-	if !deniedMetrics.Has(zoneRequestOriginStatusCountryHostMetricName) {
+	if zoneRequestOriginStatusCountryHost == nil { // Ensure it is not nil before registration
+		metricLabels := []string{"zone", "account", "status", "country"} // Base labels
+
+		if !exclude_host {
+			metricLabels = append(metricLabels, "host") // Conditionally add "host"
+		}
+
+		zoneRequestOriginStatusCountryHost = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: zoneRequestOriginStatusCountryHostMetricName.String(),
+				Help: "Count of not cached requests for zone per origin HTTP status per country per host",
+			},
+			metricLabels,
+		)
+
 		prometheus.MustRegister(zoneRequestOriginStatusCountryHost)
 	}
-	if !deniedMetrics.Has(zoneRequestStatusCountryHostMetricName) {
+	if zoneRequestStatusCountryHost == nil { // Ensure it is not nil before registration
+		metricLabels := []string{"zone", "account", "status", "country"} // Base labels
+
+		if !exclude_host {
+			metricLabels = append(metricLabels, "host") // Conditionally add "host"
+		}
+
+		zoneRequestStatusCountryHost = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: zoneRequestStatusCountryHostMetricName.String(),
+				Help: "Count of requests for zone per edge HTTP status per country per host",
+			},
+			metricLabels,
+		)
+
 		prometheus.MustRegister(zoneRequestStatusCountryHost)
 	}
+
 	if !deniedMetrics.Has(zoneBandwidthTotalMetricName) {
 		prometheus.MustRegister(zoneBandwidthTotal)
 	}
@@ -513,15 +574,60 @@ func MustRegisterMetrics(deniedMetrics Set) {
 	if !deniedMetrics.Has(zoneUniquesTotalMetricName) {
 		prometheus.MustRegister(zoneUniquesTotal)
 	}
-	if !deniedMetrics.Has(zoneColocationVisitsMetricName) {
+	if zoneColocationVisits == nil { // Ensure it is not nil before registration
+		metricLabels := []string{"zone", "account", "colocation"} // Base labels
+
+		if !exclude_host {
+			metricLabels = append(metricLabels, "host") // Conditionally add "host"
+		}
+
+		zoneColocationVisits = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: zoneColocationVisitsMetricName.String(),
+				Help: "Total visits per colocation",
+			},
+			metricLabels,
+		)
+
 		prometheus.MustRegister(zoneColocationVisits)
 	}
-	if !deniedMetrics.Has(zoneColocationEdgeResponseBytesMetricName) {
+
+	if zoneColocationEdgeResponseBytes == nil { // Ensure it is not nil before registration
+		metricLabels := []string{"zone", "account", "colocation"} // Base labels
+
+		if !exclude_host {
+			metricLabels = append(metricLabels, "host") // Conditionally add "host"
+		}
+
+		zoneColocationEdgeResponseBytes = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: zoneColocationEdgeResponseBytesMetricName.String(),
+				Help: "Edge response bytes per colocation",
+			},
+			metricLabels,
+		)
+
 		prometheus.MustRegister(zoneColocationEdgeResponseBytes)
 	}
-	if !deniedMetrics.Has(zoneColocationRequestsTotalMetricName) {
+
+	if zoneColocationRequestsTotal == nil { // Ensure it is not nil before registration
+		metricLabels := []string{"zone", "account", "colocation"} // Base labels
+
+		if !exclude_host {
+			metricLabels = append(metricLabels, "host") // Conditionally add "host"
+		}
+
+		zoneColocationRequestsTotal = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: zoneColocationRequestsTotalMetricName.String(),
+				Help: "Total requests per colocation",
+			},
+			metricLabels,
+		)
+
 		prometheus.MustRegister(zoneColocationRequestsTotal)
 	}
+
 	if !deniedMetrics.Has(zoneFirewallEventsCountMetricName) {
 		prometheus.MustRegister(zoneFirewallEventsCount)
 	}
@@ -553,19 +659,94 @@ func MustRegisterMetrics(deniedMetrics Set) {
 		prometheus.MustRegister(logpushFailedJobsZone)
 	}
 	// new
-	if !deniedMetrics.Has(zoneCustomerError4xxRate) {
+	if zoneCustomerError4xx == nil { // Ensure it is not nil before registration
+		metricLabels := []string{"zone", "account", "status", "country"} // Base labels
+
+		if !exclude_host {
+			metricLabels = append(metricLabels, "host") // Conditionally add "host"
+		}
+
+		zoneCustomerError4xx = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: zoneCustomerError4xxRate.String(),
+				Help: "Number of error rates of 4xx",
+			},
+			metricLabels,
+		)
+
 		prometheus.MustRegister(zoneCustomerError4xx)
 	}
-	if !deniedMetrics.Has(zoneCustomerError5xxRate) {
+
+	if zoneCustomerError5xx == nil { // Ensure it is not nil before registration
+		metricLabels := []string{"zone", "account", "status", "country"} // Base labels
+
+		if !exclude_host {
+			metricLabels = append(metricLabels, "host") // Conditionally add "host"
+		}
+
+		zoneCustomerError5xx = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: zoneCustomerError5xxRate.String(),
+				Help: "Number of error rates of 5xx",
+			},
+			metricLabels,
+		)
+
 		prometheus.MustRegister(zoneCustomerError5xx)
 	}
-	if !deniedMetrics.Has(zoneEdgeErrorRate) {
+
+	if zoneEdgeError == nil { // Ensure it is not nil before registration
+		var metricLabels = []string{"zone", "account", "status", "country"} // Base labels
+
+		if !exclude_host {
+			metricLabels = append(metricLabels, "host") // Conditionally add "host"
+		}
+
+		zoneEdgeError = prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: zoneEdgeErrorRate.String(),
+				Help: "Number of error rate of 4xx and 5xx",
+			},
+			metricLabels, // Correctly pass the label slice
+		)
+
 		prometheus.MustRegister(zoneEdgeError)
 	}
-	if !deniedMetrics.Has(zoneOriginErrorRate) {
+	if zoneOriginError == nil { // Ensure it is not nil before registration
+		metricLabels := []string{"zone", "account", "status", "country"} // Base labels
+
+		if !exclude_host {
+			metricLabels = append(metricLabels, "host") // Conditionally add "host"
+		}
+
+		zoneOriginError = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: zoneOriginErrorRate.String(),
+				Help: "Number of error rates of 4xx and 5xx in HTTP requests",
+			},
+			metricLabels,
+		)
+
 		prometheus.MustRegister(zoneOriginError)
 	}
-	if !deniedMetrics.Has(zoneBotRequestsByCountry) {
+
+	if zoneBotRequests == nil { // Ensure it is not nil before registration
+		metricLabels := []string{"zone", "account", "country", "action", "rule"}
+
+		exclude_host := viper.GetBool("exclude_host")
+
+		if !exclude_host {
+			metricLabels = append(metricLabels, "host")
+		}
+
+		zoneBotRequests = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "cloudflare_zone_bot_requests_total",
+				Help: "Number of bot requests over country",
+			},
+			metricLabels,
+		)
+
 		prometheus.MustRegister(zoneBotRequests)
 	}
 	if !deniedMetrics.Has(zoneCacheHitRatio) {
@@ -574,9 +755,24 @@ func MustRegisterMetrics(deniedMetrics Set) {
 	if !deniedMetrics.Has(zoneHealthCheckEventsAdaptiveGroupsAvg) {
 		prometheus.MustRegister(zoneHealthCheckEventsAvg)
 	}
-	if !deniedMetrics.Has(zoneFirewallBotsDetectedSource) {
+	if zoneFirewallBotsDetected == nil { // Ensure it is not nil before registration
+		metricLabels := []string{"zone", "account", "source", "action", "rule"} // Base labels
+
+		if !exclude_host {
+			metricLabels = append(metricLabels, "host") // Conditionally add "host"
+		}
+
+		zoneFirewallBotsDetected = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: zoneFirewallBotsDetectedSource.String(),
+				Help: "Number of bot requests over country",
+			},
+			metricLabels,
+		)
+
 		prometheus.MustRegister(zoneFirewallBotsDetected)
 	}
+
 	if !deniedMetrics.Has(zoneFirewallRequestAction) {
 		prometheus.MustRegister(zoneFirewallAction)
 	}
@@ -1036,26 +1232,27 @@ func addFirewallGroups(z *models.ZoneResp, name string, account string) {
 			"account": account,
 		}).Add(0)
 
-	// Initialize metrics with default values
-	zoneBotRequests.With(
-		prometheus.Labels{
-			"zone":    name,
-			"account": account,
-			"country": "",
-			"action":  "",
-			"rule":    "",
-			"host":    "",
-		}).Add(0)
+	zoneBotRequestsLabels := getLabels(prometheus.Labels{
+		"zone":    name,
+		"account": account,
+		"country": "",
+		"action":  "",
+		"rule":    "",
+	}, "")
 
-	zoneFirewallBotsDetected.With(
-		prometheus.Labels{
-			"zone":    name,
-			"account": account,
-			"source":  "",
-			"action":  "",
-			"rule":    "",
-			"host":    "",
-		}).Add(0)
+	zoneBotRequests.With(zoneBotRequestsLabels).Add(0)
+
+	// Generate labels dynamically using getLabels()
+	labels := getLabels(prometheus.Labels{
+		"zone":    name,
+		"account": account,
+		"source":  "",
+		"action":  "",
+		"rule":    "",
+	}, "") // Pass an empty string as the default host value
+
+	// Use the dynamically generated labels with Prometheus metric
+	zoneFirewallBotsDetected.With(labels).Add(0)
 
 	// Nothing to do if there are no FirewallEventsAdaptiveGroups
 	if len(z.FirewallEventsAdaptiveGroups) == 0 {
@@ -1080,25 +1277,29 @@ func addFirewallGroups(z *models.ZoneResp, name string, account string) {
 				"action":  g.Dimensions.Action,
 			}).Add(float64(g.Count))
 
-		zoneBotRequests.With(
-			prometheus.Labels{
-				"zone":    name,
-				"account": account,
-				"country": g.Dimensions.ClientCountryName,
-				"action":  g.Dimensions.Action,
-				"rule":    normalizeRuleName(rulesMap[g.Dimensions.RuleID]),
-				"host":    g.Dimensions.ClientRequestHTTPHost,
-			}).Add(float64(g.Count))
+		// Generate labels dynamically using getLabels()
+		zoneBotRequestsLabels := getLabels(prometheus.Labels{
+			"zone":    name,
+			"account": account,
+			"country": g.Dimensions.ClientCountryName, // Keep dynamic values
+			"action":  g.Dimensions.Action,
+			"rule":    normalizeRuleName(rulesMap[g.Dimensions.RuleID]),
+		}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
 
-		zoneFirewallBotsDetected.With(
-			prometheus.Labels{
-				"zone":    name,
-				"account": account,
-				"source":  g.Dimensions.Source,
-				"action":  g.Dimensions.Action,
-				"rule":    normalizeRuleName(rulesMap[g.Dimensions.RuleID]),
-				"host":    g.Dimensions.ClientRequestHTTPHost,
-			}).Add(float64(g.Count))
+		// Use generated labels with Prometheus metric
+		zoneBotRequests.With(zoneBotRequestsLabels).Add(float64(g.Count))
+
+		// Generate labels dynamically using getLabels()
+		labels := getLabels(prometheus.Labels{
+			"zone":    name,
+			"account": account,
+			"source":  g.Dimensions.Source,
+			"action":  g.Dimensions.Action,
+			"rule":    normalizeRuleName(rulesMap[g.Dimensions.RuleID]),
+		}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
+
+		// Use the dynamically generated labels with Prometheus metric
+		zoneFirewallBotsDetected.With(labels).Add(float64(g.Count))
 
 	}
 
@@ -1173,76 +1374,82 @@ func addHTTPAdaptiveGroups(z *models.ZoneResp, name string, account string) {
 		return
 	}
 
-	// Initialize default values for `zoneRequestOriginStatusCountryHost`
-	zoneRequestOriginStatusCountryHost.With(
-		prometheus.Labels{
-			"zone":    name,
-			"account": account,
-			"status":  "unknown",
-			"country": "unknown",
-			"host":    "unknown",
-		}).Add(0)
+	// Generate labels dynamically using getLabels()
+	labels := getLabels(prometheus.Labels{
+		"zone":    name,
+		"account": account,
+		"status":  "unknown",
+		"country": "unknown",
+	}, "unknown") // Pass "unknown" as the default host value
 
-	// Initialize default values for `zoneOriginError`
-	zoneOriginError.With(
-		prometheus.Labels{
-			"zone":    name,
-			"account": account,
-			"status":  "unknown",
-			"country": "unknown",
-			"host":    "unknown",
-		}).Add(0)
+	// Use the dynamically generated labels with Prometheus metric
+	zoneRequestOriginStatusCountryHost.With(labels).Add(0)
 
-	// Initialize default values for `zoneRequestStatusCountryHost`
-	zoneRequestStatusCountryHost.With(
-		prometheus.Labels{
-			"zone":    name,
-			"account": account,
-			"status":  "unknown",
-			"country": "unknown",
-			"host":    "unknown",
-		}).Add(0)
+	// Generate labels dynamically using getLabels()
+	labels = getLabels(prometheus.Labels{
+		"zone":    name,
+		"account": account,
+		"status":  "unknown",
+		"country": "unknown",
+	}, "unknown") // Pass "unknown" as the default host value
 
-	// Initialize default values for `zoneCustomerError4xx`
-	zoneCustomerError4xx.With(
-		prometheus.Labels{
-			"zone":    name,
-			"account": account,
-			"status":  "unknown",
-			"country": "unknown",
-			"host":    "unknown",
-		}).Add(0)
+	// Use the dynamically generated labels with Prometheus metric
+	zoneOriginError.With(labels).Add(0)
 
-	// Initialize default values for `zoneCustomerError5xx`
-	zoneCustomerError5xx.With(
-		prometheus.Labels{
-			"zone":    name,
-			"account": account,
-			"status":  "unknown",
-			"country": "unknown",
-			"host":    "unknown",
-		}).Add(0)
+	// Generate labels dynamically using getLabels()
+	labels = getLabels(prometheus.Labels{
+		"zone":    name,
+		"account": account,
+		"status":  "unknown",
+		"country": "unknown",
+	}, "unknown") // Pass "unknown" as the default host value
 
-	// Initialize default values for `zoneCustomerError5xx`
-	zoneEdgeError.With(
-		prometheus.Labels{
-			"zone":    name,
-			"account": account,
-			"status":  "unknown",
-			"country": "unknown",
-			"host":    "unknown",
-		}).Add(0)
+	// Use the dynamically generated labels with Prometheus metric
+	zoneRequestStatusCountryHost.With(labels).Add(0)
+
+	// Generate labels dynamically using getLabels()
+	labels = getLabels(prometheus.Labels{
+		"zone":    name,
+		"account": account,
+		"status":  "unknown",
+		"country": "unknown",
+	}, "unknown") // Pass "unknown" as the default host value
+
+	// Use the dynamically generated labels with Prometheus metric
+	zoneCustomerError4xx.With(labels).Add(0)
+
+	// Generate labels dynamically using getLabels()
+	labels = getLabels(prometheus.Labels{
+		"zone":    name,
+		"account": account,
+		"status":  "unknown",
+		"country": "unknown",
+	}, "unknown") // Pass "unknown" as the default host value
+
+	// Use the dynamically generated labels with Prometheus metric
+	zoneCustomerError5xx.With(labels).Add(0)
+
+	// Generate labels dynamically using getLabels()
+	labels = getLabels(prometheus.Labels{
+		"zone":    name,
+		"account": account,
+		"status":  "unknown",
+		"country": "unknown",
+	}, "unknown") // Pass "unknown" as the default host value
+
+	// Use the dynamically generated labels with Prometheus metric
+	zoneEdgeError.With(labels).Set(0) // Use `.Set(0)` for a Gauge instead of `.Add(0)`
 
 	// Process `HTTPRequestsAdaptiveGroups`
 	for _, g := range z.HTTPRequestsAdaptiveGroups {
-		zoneRequestOriginStatusCountryHost.With(
-			prometheus.Labels{
-				"zone":    name,
-				"account": account,
-				"status":  strconv.Itoa(int(g.Dimensions.OriginResponseStatus)),
-				"country": g.Dimensions.ClientCountryName,
-				"host":    g.Dimensions.ClientRequestHTTPHost,
-			}).Add(float64(g.Count))
+		labels := getLabels(prometheus.Labels{
+			"zone":    name,
+			"account": account,
+			"status":  strconv.Itoa(int(g.Dimensions.OriginResponseStatus)),
+			"country": g.Dimensions.ClientCountryName,
+		}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
+
+		zoneRequestOriginStatusCountryHost.With(labels).Add(float64(g.Count))
 	}
 
 	// Process `HTTPRequestsAdaptiveGroups`
@@ -1252,28 +1459,28 @@ func addHTTPAdaptiveGroups(z *models.ZoneResp, name string, account string) {
 
 		if (status >= 400 && status < 500) || (status >= 500 && status < 600) {
 		}
-		zoneOriginError.With(
-			prometheus.Labels{
-				"zone":    name,
-				"account": account,
-				"status":  strconv.Itoa(int(g.Dimensions.OriginResponseStatus)),
-				"country": g.Dimensions.ClientCountryName,
-				"host":    g.Dimensions.ClientRequestHTTPHost,
-			}).Add(float64(g.Count))
+		labels := getLabels(prometheus.Labels{
+			"zone":    name,
+			"account": account,
+			"status":  strconv.Itoa(int(g.Dimensions.OriginResponseStatus)),
+			"country": g.Dimensions.ClientCountryName,
+		}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
+
+		// Increment the Prometheus metric for origin errors
+		zoneOriginError.With(labels).Add(float64(g.Count))
 
 	}
 
 	// Process `HTTPRequestsEdgeCountryHost` for OriginResponseStatus
 	for _, g := range z.HTTPRequestsEdgeCountryHost {
+		labels := getLabels(prometheus.Labels{
+			"zone":    name,
+			"account": account,
+			"status":  strconv.Itoa(int(g.Dimensions.EdgeResponseStatus)),
+			"country": g.Dimensions.ClientCountryName,
+		}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
 
-		zoneRequestStatusCountryHost.With(
-			prometheus.Labels{
-				"zone":    name,
-				"account": account,
-				"status":  strconv.Itoa(int(g.Dimensions.EdgeResponseStatus)),
-				"country": g.Dimensions.ClientCountryName,
-				"host":    g.Dimensions.ClientRequestHTTPHost,
-			}).Add(float64(g.Count))
+		zoneRequestStatusCountryHost.With(labels).Add(float64(g.Count))
 	}
 
 	// Process `HTTPRequestsEdgeCountryHost` and EdgeResponseStatus for 4xx
@@ -1282,52 +1489,58 @@ func addHTTPAdaptiveGroups(z *models.ZoneResp, name string, account string) {
 
 		// Check if the status code is a 4xx error
 		if statusCode >= 400 && statusCode < 500 {
+			// Generate labels dynamically using getLabels()
+			labels := getLabels(prometheus.Labels{
+				"zone":    name,
+				"account": account,
+				"status":  strconv.Itoa(int(g.Dimensions.EdgeResponseStatus)),
+				"country": g.Dimensions.ClientCountryName,
+			}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
+
 			// Increment the Prometheus metric for 4xx errors
-			zoneCustomerError4xx.With(
-				prometheus.Labels{
-					"zone":    name,
-					"account": account,
-					"status":  strconv.Itoa(int(g.Dimensions.EdgeResponseStatus)),
-					"country": g.Dimensions.ClientCountryName,
-					"host":    g.Dimensions.ClientRequestHTTPHost,
-				}).Add(float64(g.Count))
+			zoneCustomerError4xx.With(labels).Add(float64(g.Count))
 		}
+
 	}
 
 	// Process `HTTPRequestsEdgeCountryHost` and EdgeResponseStatus for 5xx
 	for _, g := range z.HTTPRequestsEdgeCountryHost {
 		statusCode := g.Dimensions.EdgeResponseStatus
 
-		// Check if the status code is a 4xx error
+		// Check if the status code is a 5xx error
 		if statusCode >= 500 {
-			// Increment the Prometheus metric for 4xx errors
-			zoneCustomerError5xx.With(
-				prometheus.Labels{
-					"zone":    name,
-					"account": account,
-					"status":  strconv.Itoa(int(g.Dimensions.EdgeResponseStatus)),
-					"country": g.Dimensions.ClientCountryName,
-					"host":    g.Dimensions.ClientRequestHTTPHost,
-				}).Add(float64(g.Count))
+			// Generate labels dynamically using getLabels()
+			labels := getLabels(prometheus.Labels{
+				"zone":    name,
+				"account": account,
+				"status":  strconv.Itoa(int(g.Dimensions.EdgeResponseStatus)),
+				"country": g.Dimensions.ClientCountryName,
+			}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
+
+			// Increment the Prometheus metric for 5xx errors
+			zoneCustomerError5xx.With(labels).Add(float64(g.Count))
 		}
+
 	}
 
 	// Process `HTTPRequestsEdgeCountryHost` and EdgeResponseStatus for 5xx
 	for _, g := range z.HTTPRequestsEdgeCountryHost {
 		statusCode := g.Dimensions.EdgeResponseStatus
 
-		// Check if the status code is a 4xx error
+		// Check if the status code is a 4xx or 5xx error
 		if (statusCode >= 400 && statusCode < 500) || (statusCode >= 500 && statusCode < 600) {
-			// Increment the Prometheus metric for 4xx errors
-			zoneEdgeError.With(
-				prometheus.Labels{
-					"zone":    name,
-					"account": account,
-					"status":  strconv.Itoa(int(g.Dimensions.EdgeResponseStatus)),
-					"country": g.Dimensions.ClientCountryName,
-					"host":    g.Dimensions.ClientRequestHTTPHost,
-				}).Inc()
+			// Generate labels dynamically using getLabels()
+			labels := getLabels(prometheus.Labels{
+				"zone":    name,
+				"account": account,
+				"status":  strconv.Itoa(int(g.Dimensions.EdgeResponseStatus)),
+				"country": g.Dimensions.ClientCountryName,
+			}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
+
+			// Increment the Prometheus metric for edge errors
+			zoneEdgeError.With(labels).Inc()
 		}
+
 	}
 
 }
@@ -1368,16 +1581,30 @@ func fetchZoneColocationAnalytics(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 		name, account := findZoneAccountName(zones, z.ZoneTag)
 		if len(cg) == 0 {
 			// Adding default values to ensure visibility in Prometheus
-			zoneColocationVisits.With(prometheus.Labels{"zone": name, "account": account, "colocation": "default", "host": "default"}).Add(0)
-			zoneColocationEdgeResponseBytes.With(prometheus.Labels{"zone": name, "account": account, "colocation": "default", "host": "default"}).Add(0)
-			zoneColocationRequestsTotal.With(prometheus.Labels{"zone": name, "account": account, "colocation": "default", "host": "default"}).Add(0)
+			labels := getLabels(prometheus.Labels{
+				"zone":       name,
+				"account":    account,
+				"colocation": "default",
+			}, "default") // Default host value
+
+			zoneColocationVisits.With(labels).Add(0)
+			zoneColocationEdgeResponseBytes.With(labels).Add(0)
+			zoneColocationRequestsTotal.With(labels).Add(0)
 			continue
 		}
+
 		for _, c := range cg {
-			zoneColocationVisits.With(prometheus.Labels{"zone": name, "account": account, "colocation": c.Dimensions.ColoCode, "host": c.Dimensions.Host}).Add(float64(c.Sum.Visits))
-			zoneColocationEdgeResponseBytes.With(prometheus.Labels{"zone": name, "account": account, "colocation": c.Dimensions.ColoCode, "host": c.Dimensions.Host}).Add(float64(c.Sum.EdgeResponseBytes))
-			zoneColocationRequestsTotal.With(prometheus.Labels{"zone": name, "account": account, "colocation": c.Dimensions.ColoCode, "host": c.Dimensions.Host}).Add(float64(c.Count))
+			labels := getLabels(prometheus.Labels{
+				"zone":       name,
+				"account":    account,
+				"colocation": c.Dimensions.ColoCode,
+			}, c.Dimensions.Host) // Pass actual host dynamically
+
+			zoneColocationVisits.With(labels).Add(float64(c.Sum.Visits))
+			zoneColocationEdgeResponseBytes.With(labels).Add(float64(c.Sum.EdgeResponseBytes))
+			zoneColocationRequestsTotal.With(labels).Add(float64(c.Count))
 		}
+
 	}
 }
 
