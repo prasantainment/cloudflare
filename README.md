@@ -30,6 +30,8 @@ The exporter can be configured using env variables or command flags.
 
 | **KEY** | **description** |
 |-|-|
+
+| `EXCLUDE_HOST`
 | `CF_API_EMAIL` |  user email (see https://support.cloudflare.com/hc/en-us/articles/200167836-Managing-API-Tokens-and-Keys) |
 | `CF_API_KEY` |  API key associated with email (`CF_API_EMAIL` is required if this is set)|
 | `CF_API_TOKEN` |  API authentication token (recommended before API key + email. Version 0.0.5+. see https://developers.cloudflare.com/analytics/graphql-api/getting-started/authentication/api-token-auth) |
@@ -41,6 +43,7 @@ The exporter can be configured using env variables or command flags.
 | `CF_BATCH_SIZE` | cloudflare request zones batch size (1 - 10), default `10` |
 | `METRICS_DENYLIST` | (Optional) cloudflare-exporter metrics to not export, comma delimited list of cloudflare-exporter metrics. If not set, all metrics are exported |
 | `ZONE_<NAME>` |  `DEPRECATED since 0.0.5` (optional) Zone ID. Add zones you want to scrape by adding env vars in this format. You can find the zone ids in Cloudflare dashboards. |
+
 
 Corresponding flags:
 ```
