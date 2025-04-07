@@ -300,3 +300,176 @@ type Zone struct {
 type SSLResponse struct {
 	Result []Zone `json:"result"`
 }
+
+// CloudflareResponse represents the Cloudflare API response for zones.
+type CloudflareResponseHTTPGroups struct {
+	// Viewer contains the list of zones.
+	Viewer struct {
+		// Zones holds the list of ZoneResponse data.
+		Zones []ZoneRespHTTPGroups `json:"zones"`
+	} `json:"viewer"`
+}
+
+// ZoneResp represents a zone's data for HTTP requests, firewall events, and other metrics.
+type ZoneRespHTTPGroups struct {
+	HTTP1mGroups []struct {
+		Dimensions struct {
+			Datetime string `json:"datetime"`
+		} `json:"dimensions"`
+		Unique struct {
+			Uniques uint64 `json:"uniques"`
+		} `json:"uniq"`
+		Sum struct {
+			Bytes          uint64 `json:"bytes"`
+			CachedBytes    uint64 `json:"cachedBytes"`
+			CachedRequests uint64 `json:"cachedRequests"`
+			Requests       uint64 `json:"requests"`
+			BrowserMap     []struct {
+				PageViews       uint64 `json:"pageViews"`
+				UaBrowserFamily string `json:"uaBrowserFamily"`
+			} `json:"browserMap"`
+			ClientHTTPVersion []struct {
+				Protocol string `json:"clientHTTPProtocol"`
+				Requests uint64 `json:"requests"`
+			} `json:"clientHTTPVersionMap"`
+			ClientSSL []struct {
+				Protocol string `json:"clientSSLProtocol"`
+			} `json:"clientSSLMap"`
+			ContentType []struct {
+				Bytes                   uint64 `json:"bytes"`
+				Requests                uint64 `json:"requests"`
+				EdgeResponseContentType string `json:"edgeResponseContentTypeName"`
+			} `json:"contentTypeMap"`
+			Country []struct {
+				Bytes             uint64 `json:"bytes"`
+				ClientCountryName string `json:"clientCountryName"`
+				Requests          uint64 `json:"requests"`
+				Threats           uint64 `json:"threats"`
+			} `json:"countryMap"`
+			EncryptedBytes    uint64 `json:"encryptedBytes"`
+			EncryptedRequests uint64 `json:"encryptedRequests"`
+			IPClass           []struct {
+				Type     string `json:"ipType"`
+				Requests uint64 `json:"requests"`
+			} `json:"ipClassMap"`
+			PageViews      uint64 `json:"pageViews"`
+			ResponseStatus []struct {
+				EdgeResponseStatus int    `json:"edgeResponseStatus"`
+				Requests           uint64 `json:"requests"`
+			} `json:"responseStatusMap"`
+			ThreatPathing []struct {
+				Name     string `json:"threatPathingName"`
+				Requests uint64 `json:"requests"`
+			} `json:"threatPathingMap"`
+			Threats uint64 `json:"threats"`
+		} `json:"sum"`
+	} `json:"httpRequests1mGroups"`
+	FirewallEventsAdaptiveGroups []struct {
+		Count      uint64 `json:"count"`
+		Dimensions struct {
+			Action                string `json:"action"`
+			Source                string `json:"source"`
+			RuleID                string `json:"ruleId"`
+			ClientCountryName     string `json:"clientCountryName"`
+			ClientRequestHTTPHost string `json:"clientRequestHTTPHost"`
+		} `json:"dimensions"`
+	} `json:"firewallEventsAdaptiveGroups"`
+
+	ZoneTag string `json:"zoneTag"`
+}
+
+// CloudflareResponse represents the Cloudflare API response for zones.
+type CloudflareResponseFirewallGroups struct {
+	// Viewer contains the list of zones.
+	Viewer struct {
+		// Zones holds the list of ZoneResponse data.
+		Zones []ZoneRespFirewallGroups `json:"zones"`
+	} `json:"viewer"`
+}
+
+// ZoneResp represents a zone's data for HTTP requests, firewall events, and other metrics.
+type ZoneRespFirewallGroups struct {
+	FirewallEventsAdaptiveGroups []struct {
+		Count      uint64 `json:"count"`
+		Dimensions struct {
+			Action                string `json:"action"`
+			Source                string `json:"source"`
+			RuleID                string `json:"ruleId"`
+			ClientCountryName     string `json:"clientCountryName"`
+			ClientRequestHTTPHost string `json:"clientRequestHTTPHost"`
+		} `json:"dimensions"`
+	} `json:"firewallEventsAdaptiveGroups"`
+
+	ZoneTag string `json:"zoneTag"`
+}
+
+// CloudflareResponse represents the Cloudflare API response for zones.
+type CloudflareResponseHealthCheckGroups struct {
+	// Viewer contains the list of zones.
+	Viewer struct {
+		// Zones holds the list of ZoneResponse data.
+		Zones []ZoneRespHealthCheckGroups `json:"zones"`
+	} `json:"viewer"`
+}
+
+// ZoneResp represents a zone's data for HTTP requests, firewall events, and other metrics.
+type ZoneRespHealthCheckGroups struct {
+	HealthCheckEventsAdaptiveGroups []struct {
+		Count      uint64 `json:"count"`
+		Dimensions struct {
+			HealthStatus  string `json:"healthStatus"`
+			OriginIP      string `json:"originIP"`
+			FailureReason string `json:"failureReason"`
+			Region        string `json:"region"`
+			Fqdn          string `json:"fqdn"`
+		} `json:"dimensions"`
+	} `json:"healthCheckEventsAdaptiveGroups"`
+
+	ZoneTag string `json:"zoneTag"`
+}
+
+// CloudflareResponse represents the Cloudflare API response for zones.
+type CloudflareResponseHTTPRequestsEdge struct {
+	// Viewer contains the list of zones.
+	Viewer struct {
+		// Zones holds the list of ZoneResponse data.
+		Zones []ZoneRespHTTPRequestsEdge `json:"zones"`
+	} `json:"viewer"`
+}
+
+// ZoneResp represents a zone's data for HTTP requests, firewall events, and other metrics.
+type ZoneRespHTTPRequestsEdge struct {
+	HTTPRequestsEdgeCountryHost []struct {
+		Count      uint64 `json:"count"`
+		Dimensions struct {
+			EdgeResponseStatus    uint16 `json:"edgeResponseStatus"`
+			ClientCountryName     string `json:"clientCountryName"`
+			ClientRequestHTTPHost string `json:"clientRequestHTTPHost"`
+		} `json:"dimensions"`
+	} `json:"httpRequestsEdgeCountryHost"`
+
+	ZoneTag string `json:"zoneTag"`
+}
+
+// CloudflareResponse represents the Cloudflare API response for zones.
+type CloudflareResponseAdaptiveGroups struct {
+	// Viewer contains the list of zones.
+	Viewer struct {
+		// Zones holds the list of ZoneResponse data.
+		Zones []ZoneRespAdaptiveGroups `json:"zones"`
+	} `json:"viewer"`
+}
+
+// ZoneResp represents a zone's data for HTTP requests, firewall events, and other metrics.
+type ZoneRespAdaptiveGroups struct {
+	HTTPRequestsAdaptiveGroups []struct {
+		Count      uint64 `json:"count"`
+		Dimensions struct {
+			OriginResponseStatus  uint16 `json:"originResponseStatus"`
+			ClientCountryName     string `json:"clientCountryName"`
+			ClientRequestHTTPHost string `json:"clientRequestHTTPHost"`
+		} `json:"dimensions"`
+	} `json:"httpRequestsAdaptiveGroups"`
+
+	ZoneTag string `json:"zoneTag"`
+}

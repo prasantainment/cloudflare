@@ -2,10 +2,10 @@ package routes
 
 import (
 	"context"
-	"log"
 	"strings"
 	"time"
 
+	"github.com/gammazero/workerpool"
 	"github.com/gin-gonic/gin"
 	"github.com/lablabs/cloudflare-exporter/internal/handlers"
 	"github.com/lablabs/cloudflare-exporter/internal/metrics"
@@ -60,7 +60,7 @@ func RunExporter() {
 	logging.Info("Health check endpoint registered at /health")
 
 	// Start the improved periodic metric fetcher
-	go startMetricFetcher()
+	go startMetricsExporter()
 
 	// Start the Gin server
 	logging.Info("Beginning to serve metrics on ", viper.GetString("listen"))
@@ -69,33 +69,43 @@ func RunExporter() {
 	}
 }
 
-func startMetricFetcher() {
-	for {
-		log.Println("Starting metrics fetch...")
-
-		FetchMetricsWithTimeout() // Runs with a timeout
-
-		// Sleep before the next fetch to maintain exactly 1-minute intervals
-		logging.Info("Waiting for next scheduled fetch...")
-		time.Sleep(time.Minute)
-	}
-}
-
-// FetchMetricsWithTimeout ensures it doesn't exceed a given timeout
-func FetchMetricsWithTimeout() {
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second) // Timeout set
+func startMetricsExporter() {
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	done := make(chan struct{})
-	go func() {
-		metrics.FetchMetrics()
-		close(done)
-	}()
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
 
-	select {
-	case <-done:
-		logging.Info("Metrics fetched successfully")
-	case <-ctx.Done():
-		logging.Info("FetchMetrics timed out, canceling execution...")
+	// Worker pool reused across scrapes
+	pool := workerpool.New(20)
+	defer pool.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			go func() {
+				// Wrap existing FetchMetrics with context
+				err := metrics.FetchMetrics(ctx, pool)
+				if err != nil {
+					logging.Error("Fetch failed", err)
+				}
+			}()
+		}
 	}
 }
+
+// func startMetricsExporter() {
+// 	ticker := time.NewTicker(60 * time.Second)
+// 	defer ticker.Stop()
+// 	var wg sync.WaitGroup
+
+// 	for range ticker.C {
+// 		wg.Add(1)
+// 		go func() {
+// 			defer wg.Done()
+// 			metrics.FetchMetrics()
+// 		}()
+// 	}
+// }

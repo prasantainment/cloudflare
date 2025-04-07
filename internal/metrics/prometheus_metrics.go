@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"os"
@@ -9,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/biter777/countries"
 	"github.com/cloudflare/cloudflare-go"
+	"github.com/gammazero/workerpool"
 	cloudflareAPI "github.com/lablabs/cloudflare-exporter/internal/cloudflare"
 	"github.com/lablabs/cloudflare-exporter/internal/models"
 	"github.com/prometheus/client_golang/prometheus"
@@ -100,7 +101,7 @@ var (
 	}, []string{"zone", "account"},
 	)
 
-	zoneRequestCached = prometheus.NewCounterVec(prometheus.CounterOpts{
+	zoneRequestCached = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: zoneRequestCachedMetricName.String(),
 		Help: "Number of cached requests for zone",
 	}, []string{"zone", "account"},
@@ -121,7 +122,7 @@ var (
 	zoneRequestCountry = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: zoneRequestCountryMetricName.String(),
 		Help: "Number of request for zone per country",
-	}, []string{"zone", "account", "country", "region"},
+	}, []string{"zone", "account", "country"},
 	)
 
 	zoneRequestHTTPStatus = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -175,7 +176,7 @@ var (
 	zoneBandwidthCountry = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: zoneBandwidthCountryMetricName.String(),
 		Help: "Bandwidth per country per zone",
-	}, []string{"zone", "account", "country", "region"},
+	}, []string{"zone", "account", "country"},
 	)
 
 	zoneThreatsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -187,7 +188,7 @@ var (
 	zoneThreatsCountry = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: zoneThreatsCountryMetricName.String(),
 		Help: "Threats per zone per country",
-	}, []string{"zone", "account", "country", "region"},
+	}, []string{"zone", "account", "country"},
 	)
 
 	zoneThreatsType = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -235,7 +236,7 @@ var (
 	zoneHealthCheckEventsOriginCount = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: zoneHealthCheckEventsOriginCountMetricName.String(),
 		Help: "Number of Heath check events per region per origin",
-	}, []string{"zone", "account", "health_status", "origin_ip", "region", "fqdn"},
+	}, []string{"zone", "account", "health_status", "origin_ip", "fqdn"},
 	)
 
 	workerRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -280,7 +281,7 @@ var (
 		Name: "cloudflare_logpush_failed_jobs_account_count",
 		Help: "Number of failed logpush jobs on the account level",
 	},
-		[]string{"account", "account_name", "account_type", "destination", "job_id", "final"},
+		[]string{"account", "account_type", "destination", "job_id", "final"},
 	)
 
 	logpushFailedJobsZone = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -356,28 +357,28 @@ var (
 			Name: magicTransitActiveTunnels.String(),
 			Help: "Number of active Magic Transit tunnels",
 		},
-		[]string{"account", "account_name", "account_type"},
+		[]string{"account", "account_type"},
 	)
 	magicTransitHealthyTunnel = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: magicTransitHealthyTunnels.String(),
 			Help: "Number of healthy Magic Transit tunnels",
 		},
-		[]string{"account", "account_name", "account_type"},
+		[]string{"account", "account_type"},
 	)
 	magicTransitTunnelFailure = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: magicTransitTunnelFailures.String(),
 			Help: "Number of failed Magic Transit tunnels",
 		},
-		[]string{"account", "account_name", "account_type"},
+		[]string{"account", "account_type"},
 	)
 	magicTransitEdgeColo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: magicTransitEdgeColoCount.String(),
 			Help: "Number of edge colocation sites involved in Magic Transit tunnels",
 		},
-		[]string{"account", "account_name", "account_type"},
+		[]string{"account", "account_type"},
 	)
 
 	zoneCertificateValidation = prometheus.NewGaugeVec(
@@ -587,7 +588,7 @@ func MustRegisterMetrics(deniedMetrics Set) {
 
 			zoneColocationVisits = prometheus.NewCounterVec(
 				prometheus.CounterOpts{
-					Name: "cloudflare_zone_colocation_visits",
+					Name: zoneColocationVisitsMetricName.String(),
 					Help: "Total visits per colocation",
 				},
 				metricLabels1,
@@ -608,7 +609,7 @@ func MustRegisterMetrics(deniedMetrics Set) {
 
 			zoneColocationEdgeResponseBytes = prometheus.NewCounterVec(
 				prometheus.CounterOpts{
-					Name: "cloudflare_zone_colocation_edge_response_bytes",
+					Name: zoneColocationEdgeResponseBytesMetricName.String(),
 					Help: "Edge response bytes per colocation",
 				},
 				metricLabels2,
@@ -629,7 +630,7 @@ func MustRegisterMetrics(deniedMetrics Set) {
 
 			zoneColocationRequestsTotal = prometheus.NewCounterVec(
 				prometheus.CounterOpts{
-					Name: "cloudflare_zone_colocation_requests_total",
+					Name: zoneColocationRequestsTotalMetricName.String(),
 					Help: "Total requests per colocation",
 				},
 				metricLabels3,
@@ -755,7 +756,7 @@ func MustRegisterMetrics(deniedMetrics Set) {
 	}
 	if !deniedMetrics.Has(zoneBotRequestsByCountry) {
 		if zoneBotRequests == nil { // Ensure it is not nil before registration
-			zoneBotRequestsMetricLabels := []string{"zone", "account", "country", "action", "rule"}
+			zoneBotRequestsMetricLabels := []string{"zone", "account", "country", "action"}
 
 			exclude_host := viper.GetBool("exclude_host")
 
@@ -782,12 +783,12 @@ func MustRegisterMetrics(deniedMetrics Set) {
 	}
 	if deniedMetrics.Has(zoneFirewallBotsDetectedSource) {
 		if zoneFirewallBotsDetected == nil { // Ensure it is not nil before registration
-			metricLabels := []string{"zone", "account", "source", "action", "rule"} // Base labels
+			zoneFirewallBotsDetectedLabels := []string{"zone", "account", "source", "action"} // Base labels
 
 			exclude_host := viper.GetBool("exclude_host")
 
 			if !exclude_host {
-				metricLabels = append(metricLabels, "host") // Conditionally add "host"
+				zoneFirewallBotsDetectedLabels = append(zoneFirewallBotsDetectedLabels, "host") // Conditionally add "host"
 			}
 
 			zoneFirewallBotsDetected = prometheus.NewCounterVec(
@@ -795,7 +796,7 @@ func MustRegisterMetrics(deniedMetrics Set) {
 					Name: zoneFirewallBotsDetectedSource.String(),
 					Help: "Number of bot requests over country",
 				},
-				metricLabels,
+				zoneFirewallBotsDetectedLabels,
 			)
 
 			prometheus.MustRegister(zoneFirewallBotsDetected)
@@ -825,14 +826,18 @@ func MustRegisterMetrics(deniedMetrics Set) {
 }
 
 // FetchWorkerAnalytics handles cloudflare account and expose metrics like requests, error, Worker CPUTime and Duration.
-func FetchWorkerAnalytics(account cloudflare.Account, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
+func FetchWorkerAnalytics(account cloudflare.Account) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Error("Panic in FetchWorkerAnalytics", map[string]interface{}{
+				"panic": r,
+			})
+		}
+	}()
+
 	// Replace spaces with hyphens and convert to lowercase
 	accountName := strings.ToLower(strings.ReplaceAll(account.Name, " ", "-"))
-
-	// Initialize default values for metrics
-	initializeDefaultMetrics(accountName, "unknown")
 
 	r, err := cloudflareAPI.FetchWorkerTotals(account.ID)
 	if err != nil {
@@ -847,7 +852,7 @@ func FetchWorkerAnalytics(account cloudflare.Account, wg *sync.WaitGroup) {
 	for _, a := range r.Viewer.Accounts {
 		if len(a.WorkersInvocationsAdaptive) == 0 {
 			// Ensure metrics for "unknown" are set when no worker data is present
-			initializeDefaultMetrics(accountName, "unknown")
+			// initializeDefaultMetrics(accountName, "unknown")
 			continue
 		}
 
@@ -864,16 +869,6 @@ func FetchWorkerAnalytics(account cloudflare.Account, wg *sync.WaitGroup) {
 			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P99"}).Set(math.Round(float64(w.Quantiles.DurationP99)*1000) / 1000)
 			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P999"}).Set(math.Round(float64(w.Quantiles.DurationP999)*1000) / 1000)
 		}
-	}
-}
-
-// Helper function to initialize default metrics for a script
-func initializeDefaultMetrics(accountName, scriptName string) {
-	workerRequests.With(prometheus.Labels{"script_name": scriptName, "account": accountName}).Add(0)
-	workerErrors.With(prometheus.Labels{"script_name": scriptName, "account": accountName}).Add(0)
-	for _, quantile := range []string{"P50", "P75", "P99", "P999"} {
-		workerCPUTime.With(prometheus.Labels{"script_name": scriptName, "account": accountName, "quantile": quantile}).Set(0)
-		workerDuration.With(prometheus.Labels{"script_name": scriptName, "account": accountName, "quantile": quantile}).Set(0)
 	}
 }
 
@@ -934,9 +929,7 @@ func allZonesAreEmpty(account []models.LogpushResponse) bool {
 }
 
 // fetchLogpushAnalyticsForAccount expose metrics related to logpush.
-func fetchLogpushAnalyticsForAccount(account cloudflare.Account, wg *sync.WaitGroup) {
-	defer wg.Done()
-
+func fetchLogpushAnalyticsForAccount(account cloudflare.Account) {
 	defer func() { // Panic Recovery
 		if r := recover(); r != nil {
 			logging.Error("Recovered from panic in fetchLogpushAnalyticsForAccount", map[string]interface{}{
@@ -952,15 +945,7 @@ func fetchLogpushAnalyticsForAccount(account cloudflare.Account, wg *sync.WaitGr
 			"accountID": account.ID,
 			"error":     err.Error(),
 		})
-		// Add default values for the metrics in case of an API failure
-		logpushFailedJobsAccount.With(prometheus.Labels{
-			"account":      account.ID,
-			"account_name": account.Name,
-			"account_type": account.Type,
-			"destination":  "unknown",
-			"job_id":       "unknown",
-			"final":        "unknown",
-		}).Add(0)
+
 		return
 	}
 
@@ -970,14 +955,7 @@ func fetchLogpushAnalyticsForAccount(account cloudflare.Account, wg *sync.WaitGr
 
 	// Check if the API response is empty and handle accordingly
 	if len(r.Viewer.Accounts) == 0 || allZonesAreEmpty(r.Viewer.Accounts) {
-		logpushFailedJobsAccount.With(prometheus.Labels{
-			"account":      account.ID,
-			"account_name": account.Name,
-			"account_type": account.Type,
-			"destination":  "unknown",
-			"job_id":       "unknown",
-			"final":        "unknown",
-		}).Add(0)
+
 		return
 	}
 
@@ -985,8 +963,7 @@ func fetchLogpushAnalyticsForAccount(account cloudflare.Account, wg *sync.WaitGr
 	for _, acc := range r.Viewer.Accounts {
 		for _, LogpushHealthAdaptiveGroup := range acc.LogpushHealthAdaptiveGroups {
 			logpushFailedJobsAccount.With(prometheus.Labels{
-				"account":      account.ID,
-				"account_name": account.Name,
+				"account":      account.Name,
 				"account_type": account.Type,
 				"destination":  LogpushHealthAdaptiveGroup.Dimensions.DestinationType,
 				"job_id":       strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.JobID),
@@ -996,9 +973,7 @@ func fetchLogpushAnalyticsForAccount(account cloudflare.Account, wg *sync.WaitGr
 	}
 }
 
-func fetchMagicTransitHealth(account cloudflare.Account, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
+func fetchMagicTransitHealth(account cloudflare.Account) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -1022,10 +997,6 @@ func fetchMagicTransitHealth(account cloudflare.Account, wg *sync.WaitGroup) {
 
 	// Check if the API response is empty and handle accordingly
 	if r == nil || len(r.Viewer.Accounts) == 0 {
-		magicTransitActiveTunnel.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
-		magicTransitHealthyTunnel.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
-		magicTransitTunnelFailure.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
-		magicTransitEdgeColo.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(0)
 		return
 	}
 
@@ -1050,10 +1021,10 @@ func fetchMagicTransitHealth(account cloudflare.Account, wg *sync.WaitGroup) {
 	}
 
 	// Set Prometheus metrics
-	magicTransitActiveTunnel.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(activeTunnels)
-	magicTransitHealthyTunnel.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(healthyTunnels)
-	magicTransitTunnelFailure.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(tunnelFailures)
-	magicTransitEdgeColo.With(prometheus.Labels{"account": account.ID, "account_name": account.Name, "account_type": account.Type}).Set(edgeColoCount)
+	magicTransitActiveTunnel.With(prometheus.Labels{"account": account.Name, "account_type": account.Type}).Set(activeTunnels)
+	magicTransitHealthyTunnel.With(prometheus.Labels{"account": account.Name, "account_type": account.Type}).Set(healthyTunnels)
+	magicTransitTunnelFailure.With(prometheus.Labels{"account": account.Name, "account_type": account.Type}).Set(tunnelFailures)
+	magicTransitEdgeColo.With(prometheus.Labels{"account": account.Name, "account_type": account.Type}).Set(edgeColoCount)
 }
 
 func filterNonFreePlanZones(zones []cloudflare.Zone) (filteredZones []cloudflare.Zone) {
@@ -1080,9 +1051,15 @@ func findZoneAccountName(zones []cloudflare.Zone, ID string) (string, string) {
 	return "", ""
 }
 
-func fetchZoneAnalytics(zones []cloudflare.Zone, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
+func fetchZoneAnalytics(zones []cloudflare.Zone) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Error("Panic in fetchZoneAnalytics", map[string]interface{}{
+				"panic": r,
+			})
+		}
+	}()
 
 	// None of the below referenced metrics are available in the free tier
 	if viper.GetBool("free_tier") {
@@ -1094,62 +1071,52 @@ func fetchZoneAnalytics(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 		return
 	}
 
-	r, err := cloudflareAPI.FetchZoneTotals(zoneIDs)
-	if err != nil {
-		return
-	}
+	batchSize := 5 // Process 5 zones at a time
 
-	for _, z := range r.Viewer.Zones {
-		name, account := findZoneAccountName(zones, z.ZoneTag)
-		currentZone := z
+	for i := 0; i < len(zoneIDs); i += batchSize {
+		batch := zoneIDs[i:min(i+batchSize, len(zoneIDs))]
 
-		addHTTPGroups(&currentZone, name, account)
-		addFirewallGroups(&currentZone, name, account)
-		addHealthCheckGroups(&currentZone, name, account)
-		addHTTPAdaptiveGroups(&currentZone, name, account)
+		// Parallel fetch per metric type
+		httpData, _ := cloudflareAPI.FetchHTTPMetrics(batch)
+		firewallData, _ := cloudflareAPI.FetchFirewallMetrics(batch)
+		healthCheckEventsAdaptiveData, _ := cloudflareAPI.HealthCheckEventsAdaptiveMetrics(batch)
+		httpRequestsAdaptiveGroupsData, _ := cloudflareAPI.HTTPRequestsAdaptiveMetrics(batch)
+		httpRequestsEdgeCountryHostData, _ := cloudflareAPI.HTTPRequestsEdgeCountryMetrics(batch)
+
+		for _, z := range httpData.Viewer.Zones {
+			name, account := findZoneAccountName(zones, z.ZoneTag)
+			currentZone := z
+			addHTTPGroups(&currentZone, name, account)
+		}
+		for _, z := range firewallData.Viewer.Zones {
+			name, account := findZoneAccountName(zones, z.ZoneTag)
+			currentZone := z
+			addFirewallGroups(&currentZone, name, account)
+		}
+		for _, z := range healthCheckEventsAdaptiveData.Viewer.Zones {
+			name, account := findZoneAccountName(zones, z.ZoneTag)
+			currentZone := z
+			addHealthCheckGroups(&currentZone, name, account)
+		}
+		for _, z := range httpRequestsAdaptiveGroupsData.Viewer.Zones {
+			name, account := findZoneAccountName(zones, z.ZoneTag)
+			currentZone := z
+			addHTTPAdaptiveGroups(&currentZone, name, account)
+		}
+		for _, z := range httpRequestsEdgeCountryHostData.Viewer.Zones {
+			name, account := findZoneAccountName(zones, z.ZoneTag)
+			currentZone := z
+			addHTTPRequestsEdgeCountryHost(&currentZone, name, account)
+		}
 	}
 }
 
-func addHTTPGroups(z *models.ZoneResp, name string, account string) {
+func addHTTPGroups(z *models.ZoneRespHTTPGroups, name string, account string) {
 
 	if z == nil {
 		logging.Error("Received nil zone response in addHTTPGroups", nil)
 		return
 	}
-
-	// Initialize metrics with default values
-	zoneRequestTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(0)
-	zoneRequestCached.With(prometheus.Labels{"zone": name, "account": account}).Add(0)
-	zoneRequestSSLEncrypted.With(prometheus.Labels{"zone": name, "account": account}).Add(0)
-	zoneBandwidthTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(0)
-	zoneBandwidthCached.With(prometheus.Labels{"zone": name, "account": account}).Add(0)
-	zoneBandwidthSSLEncrypted.With(prometheus.Labels{"zone": name, "account": account}).Add(0)
-	zoneThreatsTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(0)
-	zonePageviewsTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(0)
-	zoneUniquesTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(0)
-
-	// Initialize multi-dimensional metrics with default labels
-	zoneRequestContentType.With(prometheus.Labels{"zone": name, "account": account, "content_type": "unknown"}).Add(0)
-	zoneBandwidthContentType.With(prometheus.Labels{"zone": name, "account": account, "content_type": "unknown"}).Add(0)
-	zoneRequestCountry.With(prometheus.Labels{"zone": name, "account": account, "country": "unknown", "region": "unknown"}).Add(0)
-	zoneBandwidthCountry.With(prometheus.Labels{"zone": name, "account": account, "country": "unknown", "region": "unknown"}).Add(0)
-	zoneThreatsCountry.With(prometheus.Labels{"zone": name, "account": account, "country": "unknown", "region": "unknown"}).Add(0)
-	zoneRequestHTTPStatus.With(prometheus.Labels{"zone": name, "account": account, "status": "unknown"}).Add(0)
-	zoneRequestBrowserMap.With(prometheus.Labels{"zone": name, "account": account, "family": "unknown"}).Add(0)
-	zoneThreatsType.With(prometheus.Labels{"zone": name, "account": account, "type": "unknown"}).Add(0)
-	zoneCacheHit.With(
-		prometheus.Labels{
-			"zone":           name,
-			"account":        account,
-			"requests":       "",
-			"cachedRequests": "",
-		}).Set(0)
-
-	zoneRequestMethod.With(prometheus.Labels{
-		"zone":    name,
-		"account": account,
-		"method":  "", // The HTTP method dimension
-	}).Add(0)
 
 	// Nothing to do if HTTP1mGroups is empty
 	if len(z.HTTP1mGroups) == 0 {
@@ -1160,7 +1127,7 @@ func addHTTPGroups(z *models.ZoneResp, name string, account string) {
 
 	// Update metrics with actual data
 	zoneRequestTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.Requests))
-	zoneRequestCached.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.CachedRequests))
+	zoneRequestCached.With(prometheus.Labels{"zone": name, "account": account}).Set(float64(zt.Sum.CachedRequests))
 	zoneRequestSSLEncrypted.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.EncryptedRequests))
 
 	for _, ct := range zt.Sum.ContentType {
@@ -1169,12 +1136,12 @@ func addHTTPGroups(z *models.ZoneResp, name string, account string) {
 	}
 
 	for _, country := range zt.Sum.Country {
-		c := countries.ByName(country.ClientCountryName)
-		region := c.Info().Region.Info().Name
+		// c := countries.ByName(country.ClientCountryName)
+		// region := c.Info().Region.Info().Name
 
-		zoneRequestCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName, "region": region}).Add(float64(country.Requests))
-		zoneBandwidthCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName, "region": region}).Add(float64(country.Bytes))
-		zoneThreatsCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName, "region": region}).Add(float64(country.Threats))
+		zoneRequestCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName}).Add(float64(country.Requests))
+		zoneBandwidthCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName}).Add(float64(country.Bytes))
+		zoneThreatsCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName}).Add(float64(country.Threats))
 	}
 
 	for _, status := range zt.Sum.ResponseStatus {
@@ -1230,61 +1197,11 @@ func addHTTPGroups(z *models.ZoneResp, name string, account string) {
 	}
 }
 
-func normalizeRuleName(initialText string) string {
-	maxLength := 200
-	nonSpaceName := strings.ReplaceAll(strings.ToLower(initialText), " ", "_")
-	if len(nonSpaceName) > maxLength {
-		return nonSpaceName[:maxLength]
-	}
-	return nonSpaceName
-}
-
-func addFirewallGroups(z *models.ZoneResp, name string, account string) {
+func addFirewallGroups(z *models.ZoneRespFirewallGroups, name string, account string) {
 
 	if z == nil {
 		logging.Error("Received nil zone response in Firewall group", nil)
 		return
-	}
-
-	zoneFirewallAction.With(
-		prometheus.Labels{
-			"zone":    name,
-			"account": account,
-			"action":  "unknown",
-		}).Add(0)
-
-	// Initialize metrics with default values
-	zoneFirewallEventsCount.With(
-		prometheus.Labels{
-			"zone":    name,
-			"account": account,
-		}).Add(0)
-
-	zoneBotRequestsLabels := getLabels(prometheus.Labels{
-		"zone":    name,
-		"account": account,
-		"country": "",
-		"action":  "",
-		"rule":    "",
-	}, "")
-
-	if zoneBotRequests != nil {
-		zoneBotRequests.With(zoneBotRequestsLabels).Add(0)
-	}
-
-	// Generate labels dynamically using getLabels()
-	labels := getLabels(prometheus.Labels{
-		"zone":    name,
-		"account": account,
-		"source":  "",
-		"action":  "",
-		"rule":    "",
-	}, "") // Pass an empty string as the default host value
-
-	// Use the dynamically generated labels with Prometheus metric
-	// zoneFirewallBotsDetected.With(labels).Add(0)
-	if zoneFirewallBotsDetected != nil { //  Prevents nil pointer error
-		zoneFirewallBotsDetected.With(labels).Add(0)
 	}
 
 	// Nothing to do if there are no FirewallEventsAdaptiveGroups
@@ -1293,7 +1210,7 @@ func addFirewallGroups(z *models.ZoneResp, name string, account string) {
 	}
 
 	// Fetch firewall rules map
-	rulesMap := cloudflareAPI.FetchFirewallRules(z.ZoneTag)
+	// rulesMap := cloudflareAPI.FetchFirewallRules(z.ZoneTag)
 
 	// Process each firewall event group
 	for _, g := range z.FirewallEventsAdaptiveGroups {
@@ -1316,7 +1233,7 @@ func addFirewallGroups(z *models.ZoneResp, name string, account string) {
 			"account": account,
 			"country": g.Dimensions.ClientCountryName, // Keep dynamic values
 			"action":  g.Dimensions.Action,
-			"rule":    normalizeRuleName(rulesMap[g.Dimensions.RuleID]),
+			// "rule":    normalizeRuleName(rulesMap[g.Dimensions.RuleID]),
 		}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
 
 		if zoneBotRequests != nil {
@@ -1330,12 +1247,12 @@ func addFirewallGroups(z *models.ZoneResp, name string, account string) {
 			"account": account,
 			"source":  g.Dimensions.Source,
 			"action":  g.Dimensions.Action,
-			"rule":    normalizeRuleName(rulesMap[g.Dimensions.RuleID]),
+			// "rule":    normalizeRuleName(rulesMap[g.Dimensions.RuleID]),
 		}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
 
 		// Use the dynamically generated labels with Prometheus metric
 		// zoneFirewallBotsDetected.With(labels).Add(float64(g.Count))
-		if zoneFirewallBotsDetected != nil { // ✅ Prevents nil pointer error
+		if zoneFirewallBotsDetected != nil { //  Prevents nil pointer error
 			zoneFirewallBotsDetected.With(labels).Add(float64(g.Count))
 		}
 
@@ -1343,29 +1260,21 @@ func addFirewallGroups(z *models.ZoneResp, name string, account string) {
 
 }
 
-func addHealthCheckGroups(z *models.ZoneResp, name string, account string) {
+func normalizeRuleName(initialText string) string {
+	maxLength := 200
+	nonSpaceName := strings.ReplaceAll(strings.ToLower(initialText), " ", "_")
+	if len(nonSpaceName) > maxLength {
+		return nonSpaceName[:maxLength]
+	}
+	return nonSpaceName
+}
+
+func addHealthCheckGroups(z *models.ZoneRespHealthCheckGroups, name string, account string) {
 
 	if z == nil {
 		logging.Error("Received nil zone response in Health check group", nil)
 		return
 	}
-
-	// Initialize metrics with default values
-	zoneHealthCheckEventsOriginCount.With(
-		prometheus.Labels{
-			"zone":          name,
-			"account":       account,
-			"health_status": "unknown",
-			"origin_ip":     "unknown",
-			"region":        "unknown",
-			"fqdn":          "unknown",
-		}).Add(0)
-
-	zoneHealthCheckEventsAvg.With(
-		prometheus.Labels{
-			"zone":    name,
-			"account": account,
-		}).Set(0)
 
 	// Nothing to do if there are no HealthCheckEventsAdaptiveGroups
 	if len(z.HealthCheckEventsAdaptiveGroups) == 0 {
@@ -1387,8 +1296,8 @@ func addHealthCheckGroups(z *models.ZoneResp, name string, account string) {
 				"account":       account,
 				"health_status": g.Dimensions.HealthStatus,
 				"origin_ip":     g.Dimensions.OriginIP,
-				"region":        g.Dimensions.Region,
-				"fqdn":          g.Dimensions.Fqdn,
+				// "region":        g.Dimensions.Region,
+				"fqdn": g.Dimensions.Fqdn,
 			}).Add(float64(g.Count))
 	}
 
@@ -1405,90 +1314,11 @@ func addHealthCheckGroups(z *models.ZoneResp, name string, account string) {
 		}).Set(avgHealthCheckEvents)
 }
 
-func addHTTPAdaptiveGroups(z *models.ZoneResp, name string, account string) {
+func addHTTPAdaptiveGroups(z *models.ZoneRespAdaptiveGroups, name string, account string) {
 
 	if z == nil {
 		logging.Error("Received nil zone response in HTTP Adaptive Group", nil)
 		return
-	}
-
-	// Generate labels dynamically using getLabels()
-	labels := getLabels(prometheus.Labels{
-		"zone":    name,
-		"account": account,
-		"status":  "unknown",
-		"country": "unknown",
-	}, "unknown") // Pass "unknown" as the default host value
-
-	// Use the dynamically generated labels with Prometheus metric
-	if zoneRequestOriginStatusCountryHost != nil {
-		zoneRequestOriginStatusCountryHost.With(labels).Add(0)
-	}
-
-	// Generate labels dynamically using getLabels()
-	labels = getLabels(prometheus.Labels{
-		"zone":    name,
-		"account": account,
-		"status":  "unknown",
-		"country": "unknown",
-	}, "unknown") // Pass "unknown" as the default host value
-
-	if zoneOriginError != nil {
-		// Use the dynamically generated labels with Prometheus metric
-		zoneOriginError.With(labels).Add(0)
-	}
-
-	// Generate labels dynamically using getLabels()
-	labels = getLabels(prometheus.Labels{
-		"zone":    name,
-		"account": account,
-		"status":  "unknown",
-		"country": "unknown",
-	}, "unknown") // Pass "unknown" as the default host value
-
-	// Use the dynamically generated labels with Prometheus metric
-	if zoneRequestStatusCountryHost != nil {
-		zoneRequestStatusCountryHost.With(labels).Add(0)
-	}
-
-	// Generate labels dynamically using getLabels()
-	labels = getLabels(prometheus.Labels{
-		"zone":    name,
-		"account": account,
-		"status":  "unknown",
-		"country": "unknown",
-	}, "unknown") // Pass "unknown" as the default host value
-
-	// Use the dynamically generated labels with Prometheus metric
-	// zoneCustomerError4xx.With(labels).Add(0)
-	if zoneCustomerError4xx != nil { // Prevents nil pointer error
-		zoneCustomerError4xx.With(labels).Add(0)
-	}
-
-	// Generate labels dynamically using getLabels()
-	labels = getLabels(prometheus.Labels{
-		"zone":    name,
-		"account": account,
-		"status":  "unknown",
-		"country": "unknown",
-	}, "unknown") // Pass "unknown" as the default host value
-
-	if zoneCustomerError5xx != nil {
-		// Use the dynamically generated labels with Prometheus metric
-		zoneCustomerError5xx.With(labels).Add(0)
-	}
-
-	// Generate labels dynamically using getLabels()
-	labels = getLabels(prometheus.Labels{
-		"zone":    name,
-		"account": account,
-		"status":  "unknown",
-		"country": "unknown",
-	}, "unknown") // Pass "unknown" as the default host value
-
-	if zoneEdgeError != nil {
-		// Use the dynamically generated labels with Prometheus metric
-		zoneEdgeError.With(labels).Set(0) // Use `.Set(0)` for a Gauge instead of `.Add(0)`
 	}
 
 	// Process `HTTPRequestsAdaptiveGroups`
@@ -1525,6 +1355,14 @@ func addHTTPAdaptiveGroups(z *models.ZoneResp, name string, account string) {
 			zoneOriginError.With(labels).Add(float64(g.Count))
 		}
 
+	}
+}
+
+func addHTTPRequestsEdgeCountryHost(z *models.ZoneRespHTTPRequestsEdge, name string, account string) {
+
+	if z == nil {
+		logging.Error("Received nil zone response in HTTP Adaptive Group", nil)
+		return
 	}
 
 	// Process `HTTPRequestsEdgeCountryHost` for OriginResponseStatus
@@ -1611,9 +1449,17 @@ func addHTTPAdaptiveGroups(z *models.ZoneResp, name string, account string) {
 
 }
 
-func fetchZoneColocationAnalytics(zones []cloudflare.Zone, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
+//
+
+func fetchZoneColocationAnalytics(zones []cloudflare.Zone) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Error("Panic in fetchZoneColocationAnalytics", map[string]interface{}{
+				"panic": r,
+			})
+		}
+	}()
 
 	// Colocation metrics are not available in non-enterprise zones
 	if viper.GetBool("free_tier") {
@@ -1645,27 +1491,6 @@ func fetchZoneColocationAnalytics(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 	for _, z := range r.Viewer.Zones {
 		cg := z.ColoGroups
 		name, account := findZoneAccountName(zones, z.ZoneTag)
-		if len(cg) == 0 {
-
-			// Adding default values to ensure visibility in Prometheus
-			labels := getLabels(prometheus.Labels{
-				"zone":       name,
-				"account":    account,
-				"colocation": "default",
-			}, "default") // Default host value
-
-			if zoneColocationVisits != nil {
-				zoneColocationVisits.With(labels).Add(0)
-			}
-			if zoneColocationEdgeResponseBytes != nil {
-				zoneColocationEdgeResponseBytes.With(labels).Add(0)
-			}
-			if zoneColocationRequestsTotal != nil {
-				zoneColocationRequestsTotal.With(labels).Add(0)
-			}
-
-			continue
-		}
 
 		for _, c := range cg {
 			labels := getLabels(prometheus.Labels{
@@ -1689,9 +1514,7 @@ func fetchZoneColocationAnalytics(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 	}
 }
 
-func fetchLoadBalancerAnalytics(zones []cloudflare.Zone, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
+func fetchLoadBalancerAnalytics(zones []cloudflare.Zone) {
 
 	// Panic recovery to ensure one failing goroutine does not stop the service
 	defer func() {
@@ -1732,20 +1555,12 @@ func fetchLoadBalancerAnalytics(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 func addLoadBalancingRequestsAdaptiveGroups(z *models.LbResp, name string, account string) {
 
 	if z == nil {
-		logging.Warn("Received nil zone response in addLoadBalancingRequestsAdaptiveGroups", nil)
+		logging.Info("Received nil zone response in addLoadBalancingRequestsAdaptiveGroups", nil)
 		return
 	}
 
 	if len(z.LoadBalancingRequestsAdaptiveGroups) == 0 {
-		// Default values in case of no data
-		poolRequestsTotal.With(
-			prometheus.Labels{
-				"zone":               name,
-				"account":            account,
-				"load_balancer_name": "default",
-				"pool_name":          "default",
-				"origin_name":        "default",
-			}).Add(0)
+
 		return
 	}
 	for _, g := range z.LoadBalancingRequestsAdaptiveGroups {
@@ -1763,19 +1578,12 @@ func addLoadBalancingRequestsAdaptiveGroups(z *models.LbResp, name string, accou
 func addLoadBalancingRequestsAdaptive(z *models.LbResp, name string, account string) {
 
 	if z == nil {
-		logging.Warn("Received nil zone response in addLoadBalancingRequestsAdaptive", nil)
+		logging.Info("Received nil zone response in addLoadBalancingRequestsAdaptive", nil)
 		return
 	}
 
 	if len(z.LoadBalancingRequestsAdaptive) == 0 {
-		// Default values in case of no data
-		poolHealthStatus.With(
-			prometheus.Labels{
-				"zone":               name,
-				"account":            account,
-				"load_balancer_name": "default",
-				"pool_name":          "default",
-			}).Set(0)
+
 		return
 	}
 	for _, g := range z.LoadBalancingRequestsAdaptive {
@@ -1791,9 +1599,15 @@ func addLoadBalancingRequestsAdaptive(z *models.LbResp, name string, account str
 	}
 }
 
-func fetchLogpushAnalyticsForZone(zones []cloudflare.Zone, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
+func fetchLogpushAnalyticsForZone(zones []cloudflare.Zone) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Error("Panic in fetchLogpushAnalyticsForZone", map[string]interface{}{
+				"panic": r,
+			})
+		}
+	}()
 
 	if viper.GetBool("free_tier") {
 		return
@@ -1806,22 +1620,13 @@ func fetchLogpushAnalyticsForZone(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 
 	r, err2 := cloudflareAPI.FetchLogpushZone(zoneIDs)
 	if err2 != nil {
-		// Add default values for the metrics in case of an API failure
-		logpushFailedJobsZone.With(prometheus.Labels{
-			"destination": "unknown",
-			"job_id":      "unknown",
-			"final":       "unknown",
-		}).Add(0)
+
 		return
 	}
 
 	// Check if the API response is empty and handle accordingly
 	if len(r.Viewer.Zones) == 0 || allZonesAreEmpty(r.Viewer.Zones) {
-		logpushFailedJobsZone.With(prometheus.Labels{
-			"destination": "unknown",
-			"job_id":      "unknown",
-			"final":       "unknown",
-		}).Add(0)
+
 		return
 	}
 
@@ -1845,9 +1650,15 @@ func fetchLogpushAnalyticsForZone(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 	}
 }
 
-func fetchSSLCertificateStatus(zones []cloudflare.Zone, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
+func fetchSSLCertificateStatus(zones []cloudflare.Zone) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Error("Panic in fetchSSLCertificateStatus", map[string]interface{}{
+				"panic": r,
+			})
+		}
+	}()
 
 	if viper.GetBool("free_tier") {
 		return
@@ -1871,14 +1682,6 @@ func fetchSSLCertificateStatus(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 		})
 		return
 	}
-
-	// Set the value for the metric
-	zoneCertificateValidation.With(prometheus.Labels{
-		"zone_id":   "unknown",
-		"zone_name": "unknown",
-		"status":    "unknown",
-		"issuer":    "unknown",
-	}).Set(0)
 
 	// Loop through the response and create Prometheus metrics
 	for _, zone := range r.Result {
@@ -1920,104 +1723,488 @@ func fetchSSLCertificateStatus(zones []cloudflare.Zone, wg *sync.WaitGroup) {
 
 }
 
-// FetchMetrics handle all the functions concurrently to expose metrics.
-func FetchMetrics() {
-	defer func() {
-		if r := recover(); r != nil {
-			logging.Error("Panic in FetchMetrics", map[string]interface{}{
-				"error": r,
-			})
-		}
-	}()
+// func FetchMetrics() {
+// 	fmt.Println("FetchMetrics started")
 
-	var zones []cloudflare.Zone
-	var accounts []cloudflare.Account
-	var err error
+// 	var wg sync.WaitGroup
 
+// 	zones, err := cloudflareAPI.FetchZones()
+// 	if err != nil {
+// 		logging.Error("Failed to fetch zones", map[string]interface{}{"error": err})
+// 		return
+// 	}
+// 	accounts, _ := cloudflareAPI.FetchAccounts()
+// 	if err != nil {
+// 		logging.Error("Failed to fetch accounts", map[string]interface{}{"error": accounts})
+// 		return
+// 	}
+
+// 	filteredZones := cloudflareAPI.FilterExcludedZones(
+// 		filterZones(zones, getTargetZones()), getExcludedZones(),
+// 	)
+
+// 	// Process Accounts
+// 	for _, account := range accounts {
+// 		wg.Add(3) // Ensure wg.Add() happens before goroutines
+
+// 		go func(acc cloudflare.Account) {
+// 			defer wg.Done()
+// 			FetchWorkerAnalytics(acc)
+// 		}(account)
+
+// 		go func(acc cloudflare.Account) {
+// 			defer wg.Done()
+// 			fetchLogpushAnalyticsForAccount(acc)
+// 		}(account)
+
+// 		go func(acc cloudflare.Account) {
+// 			defer wg.Done()
+// 			fetchMagicTransitHealth(acc)
+// 		}(account)
+
+// 	}
+
+// 	// Process Zones in Batches
+// 	batchSize := viper.GetInt("cf_batch_size")
+// 	for len(filteredZones) > 0 {
+// 		sliceLength := min(batchSize, len(filteredZones))
+// 		targetZones := filteredZones[:sliceLength]
+// 		filteredZones = filteredZones[sliceLength:]
+
+// 		wg.Add(5) // Add before launching goroutines
+// 		fmt.Println("📡 Processing zone batch:", len(targetZones))
+
+// 		go func(zones []cloudflare.Zone) {
+// 			defer wg.Done()
+// 			fetchZoneAnalytics(zones)
+// 		}(targetZones)
+
+// 		go func(zones []cloudflare.Zone) {
+// 			defer wg.Done()
+// 			fetchZoneColocationAnalytics(zones)
+// 		}(targetZones)
+
+// 		go func(zones []cloudflare.Zone) {
+// 			defer wg.Done()
+// 			fetchLoadBalancerAnalytics(zones)
+// 		}(targetZones)
+
+// 		go func(zones []cloudflare.Zone) {
+// 			defer wg.Done()
+// 			fetchLogpushAnalyticsForZone(zones)
+// 		}(targetZones)
+
+// 		go func(zones []cloudflare.Zone) {
+// 			defer wg.Done()
+// 			fetchSSLCertificateStatus(zones)
+// 		}(targetZones)
+// 	}
+
+// 	wg.Wait()
+// 	fmt.Println("FetchMetrics completed")
+// }
+
+// worker pool ::::::
+func FetchMetrics(ctx context.Context, pool *workerpool.WorkerPool) error {
+	fmt.Println("FetchMetrics started")
+
+	// Reuse ALL your existing processing logic
+	zones, accounts, err := fetchInitialData(ctx)
+	if err != nil {
+		return err
+	}
+
+	filteredZones := cloudflareAPI.FilterExcludedZones(
+		filterZones(zones, getTargetZones()), getExcludedZones(),
+	)
+
+	// Minimal changes below...
 	var wg sync.WaitGroup
-	const maxRetries = 10
-	retryDelay := 5 * time.Second
+	errChan := make(chan error, 1)
 
-	// Retry fetching zones with a limit
-	for i := 1; i <= maxRetries; i++ {
-		zones, err = cloudflareAPI.FetchZones()
-		if err == nil {
-			logging.Info("Successfully fetched zones", map[string]interface{}{
-				"zone_count": len(zones),
-			})
-			break
-		}
+	// Process accounts - NO CHANGES to your functions
+	for _, account := range accounts {
+		acc := account
+		wg.Add(1)
+		pool.Submit(func() {
+			defer wg.Done()
 
-		logging.Warn("Failed to fetch zones, retrying...", map[string]interface{}{
-			"attempt": i,
-			"error":   err.Error(),
+			// Your existing functions work unchanged!
+			FetchWorkerAnalytics(acc)
+			fetchLogpushAnalyticsForAccount(acc)
+			fetchMagicTransitHealth(acc)
 		})
-		time.Sleep(retryDelay)
-		retryDelay *= 2 // Exponential backoff
-
-		if retryDelay > 1*time.Minute {
-			retryDelay = 1 * time.Minute // Cap backoff
-		}
 	}
 
-	if len(zones) == 0 {
-		logging.Error("Failed to fetch zones after retries, proceeding with empty zones")
-	}
-
-	// Reset retry delay for accounts
-	retryDelay = 5 * time.Second
-	for i := 1; i <= maxRetries; i++ {
-		accounts, err = cloudflareAPI.FetchAccounts()
-		if err == nil {
-			logging.Info("Successfully fetched accounts", map[string]interface{}{
-				"account_count": len(accounts),
-			})
-			break
-		}
-
-		logging.Warn("Failed to fetch accounts, retrying...", map[string]interface{}{
-			"attempt": i,
-			"error":   err.Error(),
-		})
-		time.Sleep(retryDelay)
-		retryDelay *= 2
-
-		if retryDelay > 1*time.Minute {
-			retryDelay = 1 * time.Minute
-		}
-	}
-
-	if len(accounts) == 0 {
-		logging.Error("Failed to fetch accounts after retries, proceeding with empty accounts")
-	}
-
-	filteredZones := cloudflareAPI.FilterExcludedZones(filterZones(zones, getTargetZones()), getExcludedZones())
-
-	for _, a := range accounts {
-		wg.Add(3) // Add before spawning goroutines
-		go FetchWorkerAnalytics(a, &wg)
-		go fetchLogpushAnalyticsForAccount(a, &wg)
-		go fetchMagicTransitHealth(a, &wg)
-	}
-
-	// Make requests in groups of cfgBatchSize to avoid rate limit
-	// 10 is the maximum amount of zones you can request at once
+	// Process zones - NO CHANGES to your functions
+	batchSize := viper.GetInt("cf_batch_size")
 	for len(filteredZones) > 0 {
-		sliceLength := viper.GetInt("cf_batch_size")
-		if len(filteredZones) < viper.GetInt("cf_batch_size") {
-			sliceLength = len(filteredZones)
-		}
+		batch := filteredZones[:min(batchSize, len(filteredZones))]
+		filteredZones = filteredZones[len(batch):]
 
-		targetZones := filteredZones[:sliceLength]
-		filteredZones = filteredZones[len(targetZones):]
+		wg.Add(1)
+		pool.Submit(func() {
+			defer wg.Done()
 
-		wg.Add(5) // Add before spawning goroutines
-		go fetchZoneAnalytics(targetZones, &wg)
-		go fetchZoneColocationAnalytics(targetZones, &wg)
-		go fetchLoadBalancerAnalytics(targetZones, &wg)
-		go fetchLogpushAnalyticsForZone(targetZones, &wg)
-		go fetchSSLCertificateStatus(targetZones, &wg)
+			// Your existing functions work unchanged!
+			fetchZoneAnalytics(batch)
+			fetchZoneColocationAnalytics(batch)
+			fetchLoadBalancerAnalytics(batch)
+			fetchLogpushAnalyticsForZone(batch)
+			fetchSSLCertificateStatus(batch)
+		})
 	}
-	wg.Wait()
 
+	// Safe wait with context
+	go func() { wg.Wait(); close(errChan) }()
+	select {
+	case err := <-errChan:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
+
+// Helper functions
+func fetchInitialData(ctx context.Context) ([]cloudflare.Zone, []cloudflare.Account, error) {
+	zones, err := cloudflareAPI.FetchZones(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to fetch zones: %w", err)
+	}
+
+	accounts, err := cloudflareAPI.FetchAccounts(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to fetch accounts: %w", err)
+	}
+
+	return zones, accounts, nil
+}
+
+//
+//
+// func FetchMetrics() error {
+// 	fmt.Println("FetchMetrics started")
+
+// 	// Configuration - adjust these based on your needs
+// 	const (
+// 		maxConcurrent = 20 // Maximum simultaneous API calls
+// 		queueSize     = 50 // How many tasks can wait
+// 	)
+
+// 	// Create work queue with buffer
+// 	workQueue := make(chan func(), queueSize)
+// 	var wg sync.WaitGroup
+
+// 	// Start fixed number of workers
+// 	for i := 0; i < maxConcurrent; i++ {
+// 		go func() {
+// 			for task := range workQueue {
+// 				task()
+// 				wg.Done()
+// 			}
+// 		}()
+// 	}
+
+// 	// Helper to submit work
+// 	submit := func(task func()) {
+// 		wg.Add(1)
+// 		workQueue <- task
+// 	}
+
+// 	defer close(workQueue) // Clean up when done
+
+// 	// Fetch data
+// 	zones, err := cloudflareAPI.FetchZones()
+// 	if err != nil {
+// 		logging.Error("Failed to fetch zones", map[string]interface{}{"error": err})
+// 		return fmt.Errorf("failed to fetch zones: %w", err)
+// 	}
+
+// 	accounts, err := cloudflareAPI.FetchAccounts()
+// 	if err != nil {
+// 		logging.Error("Failed to fetch accounts", map[string]interface{}{"error": err})
+// 		return fmt.Errorf("failed to fetch accounts: %w", err)
+// 	}
+
+// 	filteredZones := cloudflareAPI.FilterExcludedZones(
+// 		filterZones(zones, getTargetZones()), getExcludedZones(),
+// 	)
+
+// 	// Process accounts
+// 	for _, account := range accounts {
+// 		acc := account // Local copy for goroutine
+// 		submit(func() { FetchWorkerAnalytics(acc) })
+// 		submit(func() { fetchLogpushAnalyticsForAccount(acc) })
+// 		submit(func() { fetchMagicTransitHealth(acc) })
+// 	}
+
+// 	// Process zones in batches
+// 	batchSize := viper.GetInt("cf_batch_size")
+// 	for len(filteredZones) > 0 {
+// 		batch := filteredZones[:min(batchSize, len(filteredZones))]
+// 		filteredZones = filteredZones[len(batch):]
+
+// 		submit(func() { fetchZoneAnalytics(batch) })
+// 		submit(func() { fetchZoneColocationAnalytics(batch) })
+// 		submit(func() { fetchLoadBalancerAnalytics(batch) })
+// 		submit(func() { fetchLogpushAnalyticsForZone(batch) })
+// 		submit(func() { fetchSSLCertificateStatus(batch) })
+// 	}
+
+// 	// Wait for completion
+// 	wg.Wait()
+// 	fmt.Println("FetchMetrics completed")
+// 	return nil
+// }
+
+// func min(a, b int) int {
+// 	if a < b {
+// 		return a
+// 	}
+// 	return b
+// }
+
+//
+// func FetchMetrics() {
+// 	fmt.Println("FetchMetrics started")
+
+// 	// 1. Initialize rate limiter (4 requests/second = Cloudflare's free tier limit)
+// 	limiter := rate.NewLimiter(rate.Limit(4), 10) // 4 req/sec, burst of 10
+// 	var wg sync.WaitGroup
+
+// 	// 2. Fetch initial data
+// 	zones, err := cloudflareAPI.FetchZones()
+// 	if err != nil {
+// 		logging.Error("Failed to fetch zones", map[string]interface{}{"error": err})
+// 		return
+// 	}
+// 	accounts, err := cloudflareAPI.FetchAccounts()
+// 	if err != nil {
+// 		logging.Error("Failed to fetch accounts", map[string]interface{}{"error": err})
+// 		return
+// 	}
+
+// 	filteredZones := cloudflareAPI.FilterExcludedZones(
+// 		filterZones(zones, getTargetZones()), getExcludedZones(),
+// 	)
+
+// 	// 3. Process Accounts (3 metrics per account)
+// 	for _, account := range accounts {
+// 		wg.Add(3)
+
+// 		go func(acc cloudflare.Account) {
+// 			defer wg.Done()
+// 			_ = limiter.Wait(context.Background())
+// 			FetchWorkerAnalytics(acc)
+// 		}(account)
+
+// 		go func(acc cloudflare.Account) {
+// 			defer wg.Done()
+// 			_ = limiter.Wait(context.Background())
+// 			fetchLogpushAnalyticsForAccount(acc)
+// 		}(account)
+
+// 		go func(acc cloudflare.Account) {
+// 			defer wg.Done()
+// 			_ = limiter.Wait(context.Background())
+// 			fetchMagicTransitHealth(acc)
+// 		}(account)
+// 	}
+
+// 	// 4. Process Zones in Batches (5 metrics per zone batch)
+// 	batchSize := viper.GetInt("cf_batch_size")
+// 	for i := 0; i < len(filteredZones); i += batchSize {
+// 		batch := filteredZones[i:min(i+batchSize, len(filteredZones))]
+
+// 		wg.Add(5) // For all 5 zone metric types
+
+// 		// Zone Analytics
+// 		go func(zones []cloudflare.Zone) {
+// 			defer wg.Done()
+// 			_ = limiter.Wait(context.Background())
+// 			fetchZoneAnalytics(zones)
+// 		}(batch)
+
+// 		// Colocation Analytics
+// 		go func(zones []cloudflare.Zone) {
+// 			defer wg.Done()
+// 			_ = limiter.Wait(context.Background())
+// 			fetchZoneColocationAnalytics(zones)
+// 		}(batch)
+
+// 		// Load Balancer Analytics
+// 		go func(zones []cloudflare.Zone) {
+// 			defer wg.Done()
+// 			_ = limiter.Wait(context.Background())
+// 			fetchLoadBalancerAnalytics(zones)
+// 		}(batch)
+
+// 		// Logpush Analytics
+// 		go func(zones []cloudflare.Zone) {
+// 			defer wg.Done()
+// 			_ = limiter.Wait(context.Background())
+// 			fetchLogpushAnalyticsForZone(zones)
+// 		}(batch)
+
+// 		// SSL Certificate Status
+// 		go func(zones []cloudflare.Zone) {
+// 			defer wg.Done()
+// 			_ = limiter.Wait(context.Background())
+// 			fetchSSLCertificateStatus(zones)
+// 		}(batch)
+// 	}
+
+// 	wg.Wait()
+// 	fmt.Println("✅ FetchMetrics completed")
+// }
+
+//
+
+// func addHTTPGroups(z *models.ZoneResp, name string, account string) {
+
+// 	if z == nil {
+// 		logging.Error("Received nil zone response in addHTTPGroups", nil)
+// 		return
+// 	}
+
+// 	// Nothing to do if HTTP1mGroups is empty
+// 	if len(z.HTTP1mGroups) == 0 {
+// 		return
+// 	}
+
+// 	zt := z.HTTP1mGroups[0]
+
+// 	// Update metrics with actual data
+// 	zoneRequestTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.Requests))
+// 	zoneRequestCached.With(prometheus.Labels{"zone": name, "account": account}).Set(float64(zt.Sum.CachedRequests))
+// 	zoneRequestSSLEncrypted.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.EncryptedRequests))
+
+// 	for _, ct := range zt.Sum.ContentType {
+// 		zoneRequestContentType.With(prometheus.Labels{"zone": name, "account": account, "content_type": ct.EdgeResponseContentType}).Add(float64(ct.Requests))
+// 		zoneBandwidthContentType.With(prometheus.Labels{"zone": name, "account": account, "content_type": ct.EdgeResponseContentType}).Add(float64(ct.Bytes))
+// 	}
+
+// 	for _, country := range zt.Sum.Country {
+// 		c := countries.ByName(country.ClientCountryName)
+// 		region := c.Info().Region.Info().Name
+
+// 		zoneRequestCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName, "region": region}).Add(float64(country.Requests))
+// 		zoneBandwidthCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName, "region": region}).Add(float64(country.Bytes))
+// 		zoneThreatsCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName, "region": region}).Add(float64(country.Threats))
+// 	}
+
+// 	for _, status := range zt.Sum.ResponseStatus {
+// 		zoneRequestHTTPStatus.With(prometheus.Labels{"zone": name, "account": account, "status": strconv.Itoa(status.EdgeResponseStatus)}).Add(float64(status.Requests))
+// 	}
+
+// 	for _, browser := range zt.Sum.BrowserMap {
+// 		zoneRequestBrowserMap.With(prometheus.Labels{"zone": name, "account": account, "family": browser.UaBrowserFamily}).Add(float64(browser.PageViews))
+// 	}
+
+// 	zoneBandwidthTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.Bytes))
+// 	zoneBandwidthCached.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.CachedBytes))
+// 	zoneBandwidthSSLEncrypted.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.EncryptedBytes))
+
+// 	zoneThreatsTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.Threats))
+
+// 	for _, t := range zt.Sum.ThreatPathing {
+// 		zoneThreatsType.With(prometheus.Labels{"zone": name, "account": account, "type": t.Name}).Add(float64(t.Requests))
+// 	}
+
+// 	zonePageviewsTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.PageViews))
+
+// 	// Uniques
+// 	zoneUniquesTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Unique.Uniques))
+
+// 	zoneCacheHit.With(
+// 		prometheus.Labels{
+// 			"zone":           name,
+// 			"account":        account,
+// 			"requests":       strconv.FormatUint(zt.Sum.Requests, 10),
+// 			"cachedRequests": strconv.FormatUint(zt.Sum.CachedRequests, 10),
+// 		}).Set(float64(zt.Sum.CachedRequests) / float64(zt.Sum.Requests))
+
+// 	// Map to track HTTP method counts
+// 	methodCounts := make(map[string]float64)
+
+// 	// Loop through firewall events
+// 	for _, g := range z.FirewallEventsAdaptiveGroups {
+// 		// Extract ClientRequestHTTPHost or other dimensions
+// 		httpMethod := g.Dimensions.ClientRequestHTTPHost // Adjust based on available data
+
+// 		// Increment the count for this HTTP method
+// 		methodCounts[httpMethod] += float64(g.Count)
+// 	}
+
+// 	// Push metrics to Prometheus
+// 	for method, count := range methodCounts {
+// 		zoneRequestMethod.With(prometheus.Labels{
+// 			"zone":    name,
+// 			"account": account,
+// 			"method":  method, // The HTTP method dimension
+// 		}).Add(count)
+// 	}
+// }
+
+// func addFirewallGroups(z *models.ZoneResp, name string, account string) {
+
+// 	if z == nil {
+// 		logging.Error("Received nil zone response in Firewall group", nil)
+// 		return
+// 	}
+
+// 	// Nothing to do if there are no FirewallEventsAdaptiveGroups
+// 	if len(z.FirewallEventsAdaptiveGroups) == 0 {
+// 		return
+// 	}
+
+// 	// Fetch firewall rules map
+// 	rulesMap := cloudflareAPI.FetchFirewallRules(z.ZoneTag)
+
+// 	// Process each firewall event group
+// 	for _, g := range z.FirewallEventsAdaptiveGroups {
+// 		zoneFirewallEventsCount.With(
+// 			prometheus.Labels{
+// 				"zone":    name,
+// 				"account": account,
+// 			}).Add(float64(g.Count))
+
+// 		zoneFirewallAction.With(
+// 			prometheus.Labels{
+// 				"zone":    name,
+// 				"account": account,
+// 				"action":  g.Dimensions.Action,
+// 			}).Add(float64(g.Count))
+
+// 		// Generate labels dynamically using getLabels()
+// 		zoneBotRequestsLabels := getLabels(prometheus.Labels{
+// 			"zone":    name,
+// 			"account": account,
+// 			"country": g.Dimensions.ClientCountryName, // Keep dynamic values
+// 			"action":  g.Dimensions.Action,
+// 			"rule":    normalizeRuleName(rulesMap[g.Dimensions.RuleID]),
+// 		}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
+
+// 		if zoneBotRequests != nil {
+// 			// Use generated labels with Prometheus metric
+// 			zoneBotRequests.With(zoneBotRequestsLabels).Add(float64(g.Count))
+// 		}
+
+// 		// Generate labels dynamically using getLabels()
+// 		labels := getLabels(prometheus.Labels{
+// 			"zone":    name,
+// 			"account": account,
+// 			"source":  g.Dimensions.Source,
+// 			"action":  g.Dimensions.Action,
+// 			"rule":    normalizeRuleName(rulesMap[g.Dimensions.RuleID]),
+// 		}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
+
+// 		// Use the dynamically generated labels with Prometheus metric
+// 		// zoneFirewallBotsDetected.With(labels).Add(float64(g.Count))
+// 		if zoneFirewallBotsDetected != nil { //  Prevents nil pointer error
+// 			zoneFirewallBotsDetected.With(labels).Add(float64(g.Count))
+// 		}
+
+// 	}
+
+// }
