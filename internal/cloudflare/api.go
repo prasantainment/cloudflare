@@ -16,7 +16,9 @@ import (
 	cloudflare "github.com/cloudflare/cloudflare-go"
 	"github.com/machinebox/graphql"
 	"github.com/spf13/viper"
+	"golang.org/x/time/rate"
 
+	"github.com/lablabs/cloudflare-exporter/internal/limiter"
 	"github.com/lablabs/cloudflare-exporter/internal/models"
 	logging "github.com/sirupsen/logrus"
 
@@ -33,58 +35,12 @@ var (
 	cfGraphQLEndpoint = "https://api.cloudflare.com/client/v4/graphql/"
 )
 
-// Response pools live here
-var (
-	HTTPRespPool = sync.Pool{
-		New: func() interface{} {
-			return &models.CloudflareResponseHTTPGroups{
-				Viewer: struct {
-					Zones []models.ZoneRespHTTPGroups `json:"zones"`
-				}{},
-			}
-		},
-	}
+// Cloudflare's API limits: 1200 requests/5min = 4 requests/sec (with burst of 2)
+var apiLimiter = rate.NewLimiter(rate.Every(250*time.Millisecond), 2) // 4 RPS, burst=2
 
-	FirewallRespPool = sync.Pool{
-		New: func() interface{} {
-			return &models.CloudflareResponseFirewallGroups{
-				Viewer: struct {
-					Zones []models.ZoneRespFirewallGroups `json:"zones"`
-				}{},
-			}
-		},
-	}
-
-	HealthCheckRespPool = sync.Pool{
-		New: func() interface{} {
-			return &models.CloudflareResponseHealthCheckGroups{
-				Viewer: struct {
-					Zones []models.ZoneRespHealthCheckGroups `json:"zones"`
-				}{},
-			}
-		},
-	}
-
-	HTTPRequestsEdgeRespPool = sync.Pool{
-		New: func() interface{} {
-			return &models.CloudflareResponseHTTPRequestsEdge{
-				Viewer: struct {
-					Zones []models.ZoneRespHTTPRequestsEdge `json:"zones"`
-				}{},
-			}
-		},
-	}
-
-	AdaptiveGroupsRespPool = sync.Pool{
-		New: func() interface{} {
-			return &models.CloudflareResponseAdaptiveGroups{
-				Viewer: struct {
-					Zones []models.ZoneRespAdaptiveGroups `json:"zones"`
-				}{},
-			}
-		},
-	}
-)
+func WaitForRateLimit(ctx context.Context) error {
+	return apiLimiter.Wait(ctx) // Call this before each API request
+}
 
 func FetchZones(ctx context.Context) ([]cloudflare.Zone, error) {
 	var api *cloudflare.API
@@ -218,7 +174,10 @@ func FetchAccounts(ctx context.Context) ([]cloudflare.Account, error) {
 
 //
 
-func FetchHTTPMetrics(zoneIDs []string) (*models.CloudflareResponseHTTPGroups, error) {
+func FetchHTTPMetrics(ctx context.Context, zoneIDs []string) (*models.CloudflareResponseHTTPGroups, error) {
+	if err := limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limit wait failed: %w", err)
+	}
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
 	s := 60 * time.Second
 	now = now.Truncate(s)
@@ -337,7 +296,7 @@ func FetchHTTPMetrics(zoneIDs []string) (*models.CloudflareResponseHTTPGroups, e
 	return &resp, nil
 }
 
-func FetchFirewallMetrics(zoneIDs []string) (*models.CloudflareResponseFirewallGroups, error) {
+func FetchFirewallMetrics(ctx context.Context, zoneIDs []string) (*models.CloudflareResponseFirewallGroups, error) {
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
 	s := 60 * time.Second
 	now = now.Truncate(s)
@@ -403,7 +362,7 @@ func FetchFirewallMetrics(zoneIDs []string) (*models.CloudflareResponseFirewallG
 	return &resp, nil
 }
 
-func HealthCheckEventsAdaptiveMetrics(zoneIDs []string) (*models.CloudflareResponseHealthCheckGroups, error) {
+func HealthCheckEventsAdaptiveMetrics(ctx context.Context, zoneIDs []string) (*models.CloudflareResponseHealthCheckGroups, error) {
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
 	s := 60 * time.Second
 	now = now.Truncate(s)
@@ -468,7 +427,7 @@ func HealthCheckEventsAdaptiveMetrics(zoneIDs []string) (*models.CloudflareRespo
 	return &resp, nil
 }
 
-func HTTPRequestsAdaptiveMetrics(zoneIDs []string) (*models.CloudflareResponseAdaptiveGroups, error) {
+func HTTPRequestsAdaptiveMetrics(ctx context.Context, zoneIDs []string) (*models.CloudflareResponseAdaptiveGroups, error) {
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
 	s := 60 * time.Second
 	now = now.Truncate(s)
@@ -540,7 +499,7 @@ func HTTPRequestsAdaptiveMetrics(zoneIDs []string) (*models.CloudflareResponseAd
 	return &resp, nil
 }
 
-func HTTPRequestsEdgeCountryMetrics(zoneIDs []string) (*models.CloudflareResponseHTTPRequestsEdge, error) {
+func HTTPRequestsEdgeCountryMetrics(ctx context.Context, zoneIDs []string) (*models.CloudflareResponseHTTPRequestsEdge, error) {
 	now := time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
 	s := 60 * time.Second
 	now = now.Truncate(s)

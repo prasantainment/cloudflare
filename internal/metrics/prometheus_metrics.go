@@ -13,13 +13,12 @@ import (
 	"github.com/cloudflare/cloudflare-go"
 	"github.com/gammazero/workerpool"
 	cloudflareAPI "github.com/lablabs/cloudflare-exporter/internal/cloudflare"
+	limiter "github.com/lablabs/cloudflare-exporter/internal/limiter"
 	"github.com/lablabs/cloudflare-exporter/internal/models"
 	"github.com/prometheus/client_golang/prometheus"
 	logging "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
-
-var exclude_host bool // Declare globally
 
 // MetricName represent metric name
 type MetricName string
@@ -1051,7 +1050,7 @@ func findZoneAccountName(zones []cloudflare.Zone, ID string) (string, string) {
 	return "", ""
 }
 
-func fetchZoneAnalytics(zones []cloudflare.Zone) {
+func fetchZoneAnalytics(ctx context.Context, zones []cloudflare.Zone) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -1077,11 +1076,35 @@ func fetchZoneAnalytics(zones []cloudflare.Zone) {
 		batch := zoneIDs[i:min(i+batchSize, len(zoneIDs))]
 
 		// Parallel fetch per metric type
-		httpData, _ := cloudflareAPI.FetchHTTPMetrics(batch)
-		firewallData, _ := cloudflareAPI.FetchFirewallMetrics(batch)
-		healthCheckEventsAdaptiveData, _ := cloudflareAPI.HealthCheckEventsAdaptiveMetrics(batch)
-		httpRequestsAdaptiveGroupsData, _ := cloudflareAPI.HTTPRequestsAdaptiveMetrics(batch)
-		httpRequestsEdgeCountryHostData, _ := cloudflareAPI.HTTPRequestsEdgeCountryMetrics(batch)
+		httpData, err := cloudflareAPI.FetchHTTPMetrics(ctx, batch)
+		if err != nil {
+			logging.Error("Failed to fetch HTTP metrics", err)
+			continue
+		}
+
+		firewallData, err := cloudflareAPI.FetchFirewallMetrics(ctx, batch)
+		if err != nil {
+			logging.Error("Failed to fetch firewallData", err)
+			continue
+		}
+
+		healthCheckEventsAdaptiveData, err := cloudflareAPI.HealthCheckEventsAdaptiveMetrics(ctx, batch)
+		if err != nil {
+			logging.Error("Failed to fetch healthCheckEventsAdaptiveData", err)
+			continue
+		}
+
+		httpRequestsAdaptiveGroupsData, err := cloudflareAPI.HTTPRequestsAdaptiveMetrics(ctx, batch)
+		if err != nil {
+			logging.Error("Failed to fetch httpRequestsAdaptiveGroupsData", err)
+			continue
+		}
+
+		httpRequestsEdgeCountryHostData, err := cloudflareAPI.HTTPRequestsEdgeCountryMetrics(ctx, batch)
+		if err != nil {
+			logging.Error("Failed to fetch httpRequestsEdgeCountryHostData", err)
+			continue
+		}
 
 		for _, z := range httpData.Viewer.Zones {
 			name, account := findZoneAccountName(zones, z.ZoneTag)
@@ -1144,8 +1167,29 @@ func addHTTPGroups(z *models.ZoneRespHTTPGroups, name string, account string) {
 		zoneThreatsCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName}).Add(float64(country.Threats))
 	}
 
+	var allStatusCodes = []int{
+		200, 201, 204, 206,
+		301, 302, 303, 304, 307, 308,
+		400, 401, 403, 404, 405, 406, 408, 409, 410, 412, 413, 414, 415, 416, 417, 418, 421, 422, 425, 426, 428, 429, 431, 451,
+		500, 501, 502, 503, 504, 505, 506, 507, 508, 510, 511,
+	}
+
+	seen := make(map[int]bool)
 	for _, status := range zt.Sum.ResponseStatus {
-		zoneRequestHTTPStatus.With(prometheus.Labels{"zone": name, "account": account, "status": strconv.Itoa(status.EdgeResponseStatus)}).Add(float64(status.Requests))
+		code := status.EdgeResponseStatus
+		seen[code] = true
+		zoneRequestHTTPStatus.With(prometheus.Labels{"zone": name, "account": account, "status": strconv.Itoa(code)}).Add(float64(status.Requests))
+	}
+
+	// Zero-fill unobserved statuses
+	for _, code := range allStatusCodes {
+		if !seen[code] {
+			zoneRequestHTTPStatus.With(prometheus.Labels{
+				"zone":    name,
+				"account": account,
+				"status":  strconv.Itoa(code),
+			}).Add(0)
+		}
 	}
 
 	for _, browser := range zt.Sum.BrowserMap {
@@ -1260,15 +1304,6 @@ func addFirewallGroups(z *models.ZoneRespFirewallGroups, name string, account st
 
 }
 
-func normalizeRuleName(initialText string) string {
-	maxLength := 200
-	nonSpaceName := strings.ReplaceAll(strings.ToLower(initialText), " ", "_")
-	if len(nonSpaceName) > maxLength {
-		return nonSpaceName[:maxLength]
-	}
-	return nonSpaceName
-}
-
 func addHealthCheckGroups(z *models.ZoneRespHealthCheckGroups, name string, account string) {
 
 	if z == nil {
@@ -1321,7 +1356,44 @@ func addHTTPAdaptiveGroups(z *models.ZoneRespAdaptiveGroups, name string, accoun
 		return
 	}
 
+	var allStatusCodes = []uint16{
+		200, 201, 204, 206,
+		301, 302, 303, 304, 307, 308,
+		400, 401, 403, 404, 405, 406, 408, 409, 410, 412, 413, 414, 415, 416, 417, 418, 421, 422, 425, 426, 428, 429, 431, 451,
+		500, 501, 502, 503, 504, 505, 506, 507, 508, 510, 511,
+	}
+	seen := make(map[uint16]bool)
 	// Process `HTTPRequestsAdaptiveGroups`
+	for _, g := range z.HTTPRequestsAdaptiveGroups {
+		code := g.Dimensions.OriginResponseStatus
+		seen[code] = true
+		labels := getLabels(prometheus.Labels{
+			"zone":    name,
+			"account": account,
+			"status":  strconv.Itoa(int(g.Dimensions.OriginResponseStatus)),
+			"country": g.Dimensions.ClientCountryName,
+		}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
+
+		if zoneRequestOriginStatusCountryHost != nil {
+			zoneRequestOriginStatusCountryHost.With(labels).Add(float64(g.Count))
+		}
+	}
+	for _, code := range allStatusCodes {
+		if !seen[code] {
+			labels := getLabels(prometheus.Labels{
+				"zone":    name,
+				"account": account,
+				"status":  strconv.Itoa(int(code)),
+				"country": "",
+			}, string(code)) // Pass host dynamically
+
+			if zoneRequestOriginStatusCountryHost != nil {
+				zoneRequestOriginStatusCountryHost.With(labels).Add(0)
+			}
+		}
+
+	}
+
 	for _, g := range z.HTTPRequestsAdaptiveGroups {
 		labels := getLabels(prometheus.Labels{
 			"zone":    name,
@@ -1829,9 +1901,23 @@ func FetchMetrics(ctx context.Context, pool *workerpool.WorkerPool) error {
 		pool.Submit(func() {
 			defer wg.Done()
 
-			// Your existing functions work unchanged!
+			// Add rate limiting for each API call
+			if err := limiter.Wait(ctx); err != nil {
+				logging.Error("Rate limit exceeded in worker", err)
+				return
+			}
 			FetchWorkerAnalytics(acc)
+
+			if err := limiter.Wait(ctx); err != nil {
+				logging.Error("Rate limit exceeded in worker", err)
+				return
+			}
 			fetchLogpushAnalyticsForAccount(acc)
+
+			if err := limiter.Wait(ctx); err != nil {
+				logging.Error("Rate limit exceeded in worker", err)
+				return
+			}
 			fetchMagicTransitHealth(acc)
 		})
 	}
@@ -1846,11 +1932,34 @@ func FetchMetrics(ctx context.Context, pool *workerpool.WorkerPool) error {
 		pool.Submit(func() {
 			defer wg.Done()
 
-			// Your existing functions work unchanged!
-			fetchZoneAnalytics(batch)
+			if err := limiter.Wait(ctx); err != nil {
+				logging.Error("Rate limit exceeded in worker", err)
+				return
+			}
+			fetchZoneAnalytics(ctx, batch)
+
+			if err := limiter.Wait(ctx); err != nil {
+				logging.Error("Rate limit exceeded in worker", err)
+				return
+			}
 			fetchZoneColocationAnalytics(batch)
+
+			if err := limiter.Wait(ctx); err != nil {
+				logging.Error("Rate limit exceeded in worker", err)
+				return
+			}
 			fetchLoadBalancerAnalytics(batch)
+
+			if err := limiter.Wait(ctx); err != nil {
+				logging.Error("Rate limit exceeded in worker", err)
+				return
+			}
 			fetchLogpushAnalyticsForZone(batch)
+
+			if err := limiter.Wait(ctx); err != nil {
+				logging.Error("Rate limit exceeded in worker", err)
+				return
+			}
 			fetchSSLCertificateStatus(batch)
 		})
 	}
@@ -1867,11 +1976,18 @@ func FetchMetrics(ctx context.Context, pool *workerpool.WorkerPool) error {
 
 // Helper functions
 func fetchInitialData(ctx context.Context) ([]cloudflare.Zone, []cloudflare.Account, error) {
+	// / Add rate limiting before each API call
+	if err := limiter.Wait(ctx); err != nil {
+		return nil, nil, fmt.Errorf("rate limit wait failed: %w", err)
+	}
 	zones, err := cloudflareAPI.FetchZones(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch zones: %w", err)
 	}
 
+	if err := limiter.Wait(ctx); err != nil {
+		return nil, nil, fmt.Errorf("rate limit wait failed: %w", err)
+	}
 	accounts, err := cloudflareAPI.FetchAccounts(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch accounts: %w", err)
