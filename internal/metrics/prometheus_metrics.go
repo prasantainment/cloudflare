@@ -1167,29 +1167,43 @@ func addHTTPGroups(z *models.ZoneRespHTTPGroups, name string, account string) {
 		zoneThreatsCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName}).Add(float64(country.Threats))
 	}
 
-	var allStatusCodes = []int{
-		200, 201, 204, 206,
-		301, 302, 303, 304, 307, 308,
-		400, 401, 403, 404, 405, 406, 408, 409, 410, 412, 413, 414, 415, 416, 417, 418, 421, 422, 425, 426, 428, 429, 431, 451,
-		500, 501, 502, 503, 504, 505, 506, 507, 508, 510, 511,
+	// for _, status := range zt.Sum.ResponseStatus {
+	// 	zoneRequestHTTPStatus.With(prometheus.Labels{"zone": name, "account": account, "status": strconv.Itoa(status.EdgeResponseStatus)}).Add(float64(status.Requests))
+	// }
+
+	// Define status code groups with uint64 to match Cloudflare's type
+	statusGroups := map[string]uint64{
+		"1xx": 0,
+		"2xx": 0,
+		"3xx": 0,
+		"4xx": 0,
+		"5xx": 0,
 	}
 
-	seen := make(map[int]bool)
+	// Aggregate counts by group
 	for _, status := range zt.Sum.ResponseStatus {
 		code := status.EdgeResponseStatus
-		seen[code] = true
-		zoneRequestHTTPStatus.With(prometheus.Labels{"zone": name, "account": account, "status": strconv.Itoa(code)}).Add(float64(status.Requests))
+		switch {
+		case code < 200:
+			statusGroups["1xx"] += status.Requests
+		case code < 300:
+			statusGroups["2xx"] += status.Requests
+		case code < 400:
+			statusGroups["3xx"] += status.Requests
+		case code < 500:
+			statusGroups["4xx"] += status.Requests
+		default:
+			statusGroups["5xx"] += status.Requests
+		}
 	}
 
-	// Zero-fill unobserved statuses
-	for _, code := range allStatusCodes {
-		if !seen[code] {
-			zoneRequestHTTPStatus.With(prometheus.Labels{
-				"zone":    name,
-				"account": account,
-				"status":  strconv.Itoa(code),
-			}).Add(0)
-		}
+	// Emit metrics for each group
+	for group, count := range statusGroups {
+		zoneRequestHTTPStatus.With(prometheus.Labels{
+			"zone":    name,
+			"account": account,
+			"status":  group,
+		}).Add(float64(count))
 	}
 
 	for _, browser := range zt.Sum.BrowserMap {
@@ -1356,44 +1370,7 @@ func addHTTPAdaptiveGroups(z *models.ZoneRespAdaptiveGroups, name string, accoun
 		return
 	}
 
-	var allStatusCodes = []uint16{
-		200, 201, 204, 206,
-		301, 302, 303, 304, 307, 308,
-		400, 401, 403, 404, 405, 406, 408, 409, 410, 412, 413, 414, 415, 416, 417, 418, 421, 422, 425, 426, 428, 429, 431, 451,
-		500, 501, 502, 503, 504, 505, 506, 507, 508, 510, 511,
-	}
-	seen := make(map[uint16]bool)
 	// Process `HTTPRequestsAdaptiveGroups`
-	for _, g := range z.HTTPRequestsAdaptiveGroups {
-		code := g.Dimensions.OriginResponseStatus
-		seen[code] = true
-		labels := getLabels(prometheus.Labels{
-			"zone":    name,
-			"account": account,
-			"status":  strconv.Itoa(int(g.Dimensions.OriginResponseStatus)),
-			"country": g.Dimensions.ClientCountryName,
-		}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
-
-		if zoneRequestOriginStatusCountryHost != nil {
-			zoneRequestOriginStatusCountryHost.With(labels).Add(float64(g.Count))
-		}
-	}
-	for _, code := range allStatusCodes {
-		if !seen[code] {
-			labels := getLabels(prometheus.Labels{
-				"zone":    name,
-				"account": account,
-				"status":  strconv.Itoa(int(code)),
-				"country": "",
-			}, string(code)) // Pass host dynamically
-
-			if zoneRequestOriginStatusCountryHost != nil {
-				zoneRequestOriginStatusCountryHost.With(labels).Add(0)
-			}
-		}
-
-	}
-
 	for _, g := range z.HTTPRequestsAdaptiveGroups {
 		labels := getLabels(prometheus.Labels{
 			"zone":    name,
@@ -1408,26 +1385,6 @@ func addHTTPAdaptiveGroups(z *models.ZoneRespAdaptiveGroups, name string, accoun
 
 	}
 
-	// Process `HTTPRequestsAdaptiveGroups`
-	for _, g := range z.HTTPRequestsAdaptiveGroups {
-
-		status := g.Dimensions.OriginResponseStatus // Get the origin response status
-
-		if (status >= 400 && status < 500) || (status >= 500 && status < 600) {
-		}
-		labels := getLabels(prometheus.Labels{
-			"zone":    name,
-			"account": account,
-			"status":  strconv.Itoa(int(g.Dimensions.OriginResponseStatus)),
-			"country": g.Dimensions.ClientCountryName,
-		}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
-
-		if zoneOriginError != nil {
-			// Increment the Prometheus metric for origin errors
-			zoneOriginError.With(labels).Add(float64(g.Count))
-		}
-
-	}
 }
 
 func addHTTPRequestsEdgeCountryHost(z *models.ZoneRespHTTPRequestsEdge, name string, account string) {
@@ -1795,87 +1752,6 @@ func fetchSSLCertificateStatus(zones []cloudflare.Zone) {
 
 }
 
-// func FetchMetrics() {
-// 	fmt.Println("FetchMetrics started")
-
-// 	var wg sync.WaitGroup
-
-// 	zones, err := cloudflareAPI.FetchZones()
-// 	if err != nil {
-// 		logging.Error("Failed to fetch zones", map[string]interface{}{"error": err})
-// 		return
-// 	}
-// 	accounts, _ := cloudflareAPI.FetchAccounts()
-// 	if err != nil {
-// 		logging.Error("Failed to fetch accounts", map[string]interface{}{"error": accounts})
-// 		return
-// 	}
-
-// 	filteredZones := cloudflareAPI.FilterExcludedZones(
-// 		filterZones(zones, getTargetZones()), getExcludedZones(),
-// 	)
-
-// 	// Process Accounts
-// 	for _, account := range accounts {
-// 		wg.Add(3) // Ensure wg.Add() happens before goroutines
-
-// 		go func(acc cloudflare.Account) {
-// 			defer wg.Done()
-// 			FetchWorkerAnalytics(acc)
-// 		}(account)
-
-// 		go func(acc cloudflare.Account) {
-// 			defer wg.Done()
-// 			fetchLogpushAnalyticsForAccount(acc)
-// 		}(account)
-
-// 		go func(acc cloudflare.Account) {
-// 			defer wg.Done()
-// 			fetchMagicTransitHealth(acc)
-// 		}(account)
-
-// 	}
-
-// 	// Process Zones in Batches
-// 	batchSize := viper.GetInt("cf_batch_size")
-// 	for len(filteredZones) > 0 {
-// 		sliceLength := min(batchSize, len(filteredZones))
-// 		targetZones := filteredZones[:sliceLength]
-// 		filteredZones = filteredZones[sliceLength:]
-
-// 		wg.Add(5) // Add before launching goroutines
-// 		fmt.Println("📡 Processing zone batch:", len(targetZones))
-
-// 		go func(zones []cloudflare.Zone) {
-// 			defer wg.Done()
-// 			fetchZoneAnalytics(zones)
-// 		}(targetZones)
-
-// 		go func(zones []cloudflare.Zone) {
-// 			defer wg.Done()
-// 			fetchZoneColocationAnalytics(zones)
-// 		}(targetZones)
-
-// 		go func(zones []cloudflare.Zone) {
-// 			defer wg.Done()
-// 			fetchLoadBalancerAnalytics(zones)
-// 		}(targetZones)
-
-// 		go func(zones []cloudflare.Zone) {
-// 			defer wg.Done()
-// 			fetchLogpushAnalyticsForZone(zones)
-// 		}(targetZones)
-
-// 		go func(zones []cloudflare.Zone) {
-// 			defer wg.Done()
-// 			fetchSSLCertificateStatus(zones)
-// 		}(targetZones)
-// 	}
-
-// 	wg.Wait()
-// 	fmt.Println("FetchMetrics completed")
-// }
-
 // worker pool ::::::
 func FetchMetrics(ctx context.Context, pool *workerpool.WorkerPool) error {
 	fmt.Println("FetchMetrics started")
@@ -1995,6 +1871,87 @@ func fetchInitialData(ctx context.Context) ([]cloudflare.Zone, []cloudflare.Acco
 
 	return zones, accounts, nil
 }
+
+// func FetchMetrics() {
+// 	fmt.Println("FetchMetrics started")
+
+// 	var wg sync.WaitGroup
+
+// 	zones, err := cloudflareAPI.FetchZones()
+// 	if err != nil {
+// 		logging.Error("Failed to fetch zones", map[string]interface{}{"error": err})
+// 		return
+// 	}
+// 	accounts, _ := cloudflareAPI.FetchAccounts()
+// 	if err != nil {
+// 		logging.Error("Failed to fetch accounts", map[string]interface{}{"error": accounts})
+// 		return
+// 	}
+
+// 	filteredZones := cloudflareAPI.FilterExcludedZones(
+// 		filterZones(zones, getTargetZones()), getExcludedZones(),
+// 	)
+
+// 	// Process Accounts
+// 	for _, account := range accounts {
+// 		wg.Add(3) // Ensure wg.Add() happens before goroutines
+
+// 		go func(acc cloudflare.Account) {
+// 			defer wg.Done()
+// 			FetchWorkerAnalytics(acc)
+// 		}(account)
+
+// 		go func(acc cloudflare.Account) {
+// 			defer wg.Done()
+// 			fetchLogpushAnalyticsForAccount(acc)
+// 		}(account)
+
+// 		go func(acc cloudflare.Account) {
+// 			defer wg.Done()
+// 			fetchMagicTransitHealth(acc)
+// 		}(account)
+
+// 	}
+
+// 	// Process Zones in Batches
+// 	batchSize := viper.GetInt("cf_batch_size")
+// 	for len(filteredZones) > 0 {
+// 		sliceLength := min(batchSize, len(filteredZones))
+// 		targetZones := filteredZones[:sliceLength]
+// 		filteredZones = filteredZones[sliceLength:]
+
+// 		wg.Add(5) // Add before launching goroutines
+// 		fmt.Println("📡 Processing zone batch:", len(targetZones))
+
+// 		go func(zones []cloudflare.Zone) {
+// 			defer wg.Done()
+// 			fetchZoneAnalytics(zones)
+// 		}(targetZones)
+
+// 		go func(zones []cloudflare.Zone) {
+// 			defer wg.Done()
+// 			fetchZoneColocationAnalytics(zones)
+// 		}(targetZones)
+
+// 		go func(zones []cloudflare.Zone) {
+// 			defer wg.Done()
+// 			fetchLoadBalancerAnalytics(zones)
+// 		}(targetZones)
+
+// 		go func(zones []cloudflare.Zone) {
+// 			defer wg.Done()
+// 			fetchLogpushAnalyticsForZone(zones)
+// 		}(targetZones)
+
+// 		go func(zones []cloudflare.Zone) {
+// 			defer wg.Done()
+// 			fetchSSLCertificateStatus(zones)
+// 		}(targetZones)
+// 	}
+
+// 	wg.Wait()
+// 	fmt.Println("FetchMetrics completed")
+// }
 
 //
 //
