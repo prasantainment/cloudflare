@@ -18,7 +18,7 @@ import (
 func RunExporter() {
 
 	// Log the beginning of the exporter setup
-	logging.Info("Starting metric exporter setup version : 1.9")
+	logging.Info("Starting metric exporter setup version : 1.10")
 
 	cfgMetricsPath := viper.GetString("metrics_path")
 

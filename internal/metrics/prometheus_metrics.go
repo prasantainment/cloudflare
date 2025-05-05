@@ -76,6 +76,11 @@ const (
 	magicTransitTunnelFailures             MetricName = "cloudflare_magic_transit_tunnel_failures"
 	magicTransitEdgeColoCount              MetricName = "cloudflare_magic_transit_edge_colo_count"
 	zoneCertificateValidationStatus        MetricName = "cloudflare_zone_certificate_validation_status"
+	// other new
+	zoneOriginResponseDurationMsMetricName         MetricName = "cloudflare_zone_origin_response_duration_ms"
+	zoneColocationVisitsErrorMetricName            MetricName = "cloudflare_zone_colocation_visits_error"              //host
+	zoneColocationEdgeResponseBytesErrorMetricName MetricName = "cloudflare_zone_colocation_edge_response_bytes_error" //host
+	zoneColocationRequestsTotalErrorMetricName     MetricName = "cloudflare_zone_colocation_requests_total_error"      //host
 )
 
 // Set map to check metric name availability.
@@ -451,6 +456,11 @@ func BuildAllMetricsSet() Set {
 	allMetricsSet.Add(magicTransitHealthyTunnels)
 	allMetricsSet.Add(magicTransitTunnelFailures)
 	allMetricsSet.Add(zoneCertificateValidationStatus)
+	// other new
+	allMetricsSet.Add(zoneOriginResponseDurationMsMetricName)
+	allMetricsSet.Add(zoneColocationVisitsErrorMetricName)
+	allMetricsSet.Add(zoneColocationEdgeResponseBytesErrorMetricName)
+	allMetricsSet.Add(zoneColocationRequestsTotalErrorMetricName)
 
 	return allMetricsSet
 }
@@ -479,6 +489,12 @@ var zoneEdgeError *prometheus.GaugeVec
 var zoneOriginError *prometheus.CounterVec
 var zoneFirewallBotsDetected *prometheus.CounterVec
 var zoneBotRequests *prometheus.CounterVec
+
+// other new added
+var zoneOriginResponseDuration *prometheus.GaugeVec
+var zoneColocationVisitsError *prometheus.CounterVec
+var zoneColocationEdgeResponseBytesError *prometheus.CounterVec
+var zoneColocationRequestsTotalError *prometheus.CounterVec
 
 // MustRegisterMetrics register the metrics.
 func MustRegisterMetrics(deniedMetrics Set) {
@@ -780,7 +796,7 @@ func MustRegisterMetrics(deniedMetrics Set) {
 	if !deniedMetrics.Has(zoneHealthCheckEventsAdaptiveGroupsAvg) {
 		prometheus.MustRegister(zoneHealthCheckEventsAvg)
 	}
-	if deniedMetrics.Has(zoneFirewallBotsDetectedSource) {
+	if !deniedMetrics.Has(zoneFirewallBotsDetectedSource) {
 		if zoneFirewallBotsDetected == nil { // Ensure it is not nil before registration
 			zoneFirewallBotsDetectedLabels := []string{"zone", "account", "source", "action"} // Base labels
 
@@ -822,6 +838,91 @@ func MustRegisterMetrics(deniedMetrics Set) {
 	if !deniedMetrics.Has(zoneCertificateValidationStatus) {
 		prometheus.MustRegister(zoneCertificateValidation)
 	}
+	if !deniedMetrics.Has(zoneOriginResponseDurationMsMetricName) {
+		if zoneOriginResponseDuration == nil { // Ensure it is not nil before registration
+			zoneOriginResponseDurationMsLabels := []string{"zone", "account", "status", "country"} // Base labels
+
+			exclude_host := viper.GetBool("exclude_host")
+
+			if !exclude_host {
+				zoneOriginResponseDurationMsLabels = append(zoneOriginResponseDurationMsLabels, "host") // Conditionally add "host"
+			}
+
+			zoneOriginResponseDuration = prometheus.NewGaugeVec(
+				prometheus.GaugeOpts{
+					Name: zoneOriginResponseDurationMsMetricName.String(),
+					Help: "Zone Origin Response Time MS",
+				},
+				zoneOriginResponseDurationMsLabels, // Correctly pass the label slice
+			)
+
+			prometheus.MustRegister(zoneOriginResponseDuration)
+		}
+	}
+	if !deniedMetrics.Has(zoneColocationVisitsErrorMetricName) {
+		if zoneColocationVisitsError == nil { // Ensure it is not nil before registration
+			metricLabelsError1 := []string{"zone", "account", "colocation", "status"} // Base labels
+
+			exclude_host := viper.GetBool("exclude_host")
+
+			if !exclude_host {
+				metricLabelsError1 = append(metricLabelsError1, "host") // Conditionally add "host"
+			}
+
+			zoneColocationVisitsError = prometheus.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: zoneColocationVisitsErrorMetricName.String(),
+					Help: "Total visits per colocation with error code",
+				},
+				metricLabelsError1,
+			)
+
+			prometheus.MustRegister(zoneColocationVisitsError)
+		}
+	}
+	if !deniedMetrics.Has(zoneColocationEdgeResponseBytesErrorMetricName) {
+		if zoneColocationEdgeResponseBytesError == nil { // Ensure it is not nil before registration
+			metricLabelsError2 := []string{"zone", "account", "colocation", "status"} // Base labels
+
+			exclude_host := viper.GetBool("exclude_host")
+
+			if !exclude_host {
+				metricLabelsError2 = append(metricLabelsError2, "host") // Conditionally add "host"
+			}
+
+			zoneColocationEdgeResponseBytesError = prometheus.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: zoneColocationEdgeResponseBytesErrorMetricName.String(),
+					Help: "Edge response bytes per colocation with error code",
+				},
+				metricLabelsError2,
+			)
+
+			prometheus.MustRegister(zoneColocationEdgeResponseBytesError)
+		}
+	}
+	if !deniedMetrics.Has(zoneColocationRequestsTotalErrorMetricName) {
+		if zoneColocationRequestsTotalError == nil { // Ensure it is not nil before registration
+			metricLabelsError3 := []string{"zone", "account", "colocation", "status"} // Base labels
+
+			exclude_host := viper.GetBool("exclude_host")
+
+			if !exclude_host {
+				metricLabelsError3 = append(metricLabelsError3, "host") // Conditionally add "host"
+			}
+
+			zoneColocationRequestsTotalError = prometheus.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: zoneColocationRequestsTotalErrorMetricName.String(),
+					Help: "Total requests per colocation with error code",
+				},
+				metricLabelsError3,
+			)
+
+			prometheus.MustRegister(zoneColocationRequestsTotalError)
+		}
+	}
+
 }
 
 // FetchWorkerAnalytics handles cloudflare account and expose metrics like requests, error, Worker CPUTime and Duration.
@@ -1004,6 +1105,7 @@ func fetchMagicTransitHealth(account cloudflare.Account) {
 
 	// Process metrics from the API response
 	for _, acc := range r.Viewer.Accounts {
+		fmt.Println(":::::::::::::::::::::::::::::", acc.MagicTransitTunnelHealthChecksAdaptiveGroups)
 		for _, group := range acc.MagicTransitTunnelHealthChecksAdaptiveGroups {
 			if group.Dimensions.Active == 1 {
 				activeTunnels++
@@ -1385,6 +1487,21 @@ func addHTTPAdaptiveGroups(z *models.ZoneRespAdaptiveGroups, name string, accoun
 
 	}
 
+	// Process `HTTPRequestsAdaptiveGroups`
+	for _, g := range z.HTTPRequestsAdaptiveGroups {
+		labels := getLabels(prometheus.Labels{
+			"zone":    name,
+			"account": account,
+			"status":  strconv.Itoa(int(g.Dimensions.OriginResponseStatus)),
+			"country": g.Dimensions.ClientCountryName,
+		}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
+
+		if zoneOriginResponseDuration != nil {
+			zoneOriginResponseDuration.With(labels).Set(g.Avg.OriginResponseDurationMs)
+		}
+
+	}
+
 }
 
 func addHTTPRequestsEdgeCountryHost(z *models.ZoneRespHTTPRequestsEdge, name string, account string) {
@@ -1536,6 +1653,30 @@ func fetchZoneColocationAnalytics(zones []cloudflare.Zone) {
 			}
 			if zoneColocationRequestsTotal != nil {
 				zoneColocationRequestsTotal.With(labels).Add(float64(c.Count))
+			}
+
+			// Only process error status codes (4xx/5xx)
+			status := c.Dimensions.OriginResponseStatus
+
+			if status >= 400 {
+				// Create error-specific labels
+				errorLabels := getLabels(prometheus.Labels{
+					"zone":       name,
+					"account":    account,
+					"colocation": c.Dimensions.ColoCode,
+					"status":     fmt.Sprintf("%dxx", status/100),
+				}, c.Dimensions.Host) // Pass actual host dynamically
+
+				// Error-specific metrics
+				if zoneColocationVisitsError != nil {
+					zoneColocationVisitsError.With(errorLabels).Add(float64(c.Sum.Visits))
+				}
+				if zoneColocationEdgeResponseBytesError != nil {
+					zoneColocationEdgeResponseBytesError.With(errorLabels).Add(float64(c.Sum.EdgeResponseBytes))
+				}
+				if zoneColocationRequestsTotalError != nil {
+					zoneColocationRequestsTotalError.With(errorLabels).Add(float64(c.Count))
+				}
 			}
 
 		}
@@ -1794,6 +1935,7 @@ func FetchMetrics(ctx context.Context, pool *workerpool.WorkerPool) error {
 				logging.Error("Rate limit exceeded in worker", err)
 				return
 			}
+			fmt.Println("::::::::::::::::before calling")
 			fetchMagicTransitHealth(acc)
 		})
 	}

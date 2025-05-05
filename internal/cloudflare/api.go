@@ -445,6 +445,9 @@ func HTTPRequestsAdaptiveMetrics(ctx context.Context, zoneIDs []string) (*models
 							clientCountryName
 							clientRequestHTTPHost
 						}
+						avg {
+          					originResponseDurationMs
+        				}
 					}
 					httpRequestsEdgeCountryHost: httpRequestsAdaptiveGroups(limit: $limit, filter: { datetime_geq: $mintime, datetime_lt: $maxtime }) {
 						count
@@ -897,6 +900,7 @@ func FetchColoTotals(zoneIDs []string) (*models.CloudflareResponseColo, error) {
 							clientRequestHTTPHost
 							coloCode
 							datetime
+							originResponseStatus
 						}
 						sum {
 							edgeResponseBytes

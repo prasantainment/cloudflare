@@ -91,9 +91,10 @@ type AccountResp struct {
 type ZoneRespColo struct {
 	ColoGroups []struct {
 		Dimensions struct {
-			Datetime string `json:"datetime"`
-			ColoCode string `json:"coloCode"`
-			Host     string `json:"clientRequestHTTPHost"`
+			Datetime             string `json:"datetime"`
+			ColoCode             string `json:"coloCode"`
+			Host                 string `json:"clientRequestHTTPHost"`
+			OriginResponseStatus int    `json:"originResponseStatus"`
 		} `json:"dimensions"`
 		Count uint64 `json:"count"`
 		Sum   struct {
@@ -469,6 +470,9 @@ type ZoneRespAdaptiveGroups struct {
 			ClientCountryName     string `json:"clientCountryName"`
 			ClientRequestHTTPHost string `json:"clientRequestHTTPHost"`
 		} `json:"dimensions"`
+		Avg struct {
+			OriginResponseDurationMs float64 `json:"originResponseDurationMs"`
+		}
 	} `json:"httpRequestsAdaptiveGroups"`
 
 	ZoneTag string `json:"zoneTag"`
