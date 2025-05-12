@@ -438,7 +438,7 @@ func HTTPRequestsAdaptiveMetrics(ctx context.Context, zoneIDs []string) (*models
 			viewer {
 				zones(filter: { zoneTag_in: $zoneIDs }) {
 					zoneTag
-					httpRequestsAdaptiveGroups(limit: $limit, filter: { datetime_geq: $mintime, datetime_lt: $maxtime, cacheStatus_notin: ["hit"] }) {
+					httpRequestsAdaptiveGroups(limit: $limit, filter: { datetime_geq: $mintime, datetime_lt: $maxtime, cacheStatus_notin: ["hit"], originResponseStatus_in: [400, 404, 500, 502, 503, 504, 522, 523, 524] }) {
 						count
 						dimensions {
 							originResponseStatus
@@ -448,14 +448,6 @@ func HTTPRequestsAdaptiveMetrics(ctx context.Context, zoneIDs []string) (*models
 						avg {
           					originResponseDurationMs
         				}
-					}
-					httpRequestsEdgeCountryHost: httpRequestsAdaptiveGroups(limit: $limit, filter: { datetime_geq: $mintime, datetime_lt: $maxtime }) {
-						count
-						dimensions {
-							edgeResponseStatus
-							clientCountryName
-							clientRequestHTTPHost
-						}
 					}
 				}
 			}

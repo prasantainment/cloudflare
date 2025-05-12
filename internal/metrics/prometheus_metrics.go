@@ -1502,6 +1502,83 @@ func addHTTPAdaptiveGroups(z *models.ZoneRespAdaptiveGroups, name string, accoun
 
 	}
 
+	// Process `` and EdgeResponseStatus for 4xx
+	for _, g := range z.HTTPRequestsAdaptiveGroups {
+		statusCode := g.Dimensions.OriginResponseStatus
+
+		// Check if OriginResponseStatus is zero (default value) to skip invalid groups
+		if statusCode == 0 {
+			logging.Debug("Skipping group without valid origin response status", map[string]interface{}{
+				"zone":          name,
+				"account":       account,
+				"clientHost":    g.Dimensions.ClientRequestHTTPHost,
+				"clientCountry": g.Dimensions.ClientCountryName,
+			})
+			continue
+		}
+
+		// Check if the status code is a 4xx error
+		if statusCode >= 400 && statusCode < 500 {
+			// Exclude edge-specific errors like 499 (Client Disconnect)
+			if statusCode == 499 {
+				logging.Debug("Skipping edge error (499 - Client Disconnect)", map[string]interface{}{
+					"zone":          name,
+					"account":       account,
+					"clientHost":    g.Dimensions.ClientRequestHTTPHost,
+					"clientCountry": g.Dimensions.ClientCountryName,
+				})
+				continue
+			}
+			// Generate labels dynamically using getLabels()
+			labels := getLabels(prometheus.Labels{
+				"zone":    name,
+				"account": account,
+				"status":  strconv.Itoa(int(g.Dimensions.OriginResponseStatus)),
+				"country": g.Dimensions.ClientCountryName,
+			}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
+
+			if zoneCustomerError4xx != nil {
+				// Increment the Prometheus metric for 4xx errors
+				zoneCustomerError4xx.With(labels).Add(float64(g.Count))
+			}
+		}
+	}
+
+	// Process `` and EdgeResponseStatus for 5xx
+	for _, g := range z.HTTPRequestsAdaptiveGroups {
+
+		// Check if OriginResponseStatus is zero (default value) to skip invalid groups
+		if g.Dimensions.OriginResponseStatus == 0 {
+			logging.Debug("Skipping group without valid origin response status", map[string]interface{}{
+				"zone":          name,
+				"account":       account,
+				"clientHost":    g.Dimensions.ClientRequestHTTPHost,
+				"clientCountry": g.Dimensions.ClientCountryName,
+			})
+			continue
+		}
+
+		statusCode := g.Dimensions.OriginResponseStatus
+
+		// Check if the status code is a 5xx error
+		if statusCode >= 500 {
+			// Generate labels dynamically using getLabels()
+			labels := getLabels(prometheus.Labels{
+				"zone":    name,
+				"account": account,
+				"status":  strconv.Itoa(int(g.Dimensions.OriginResponseStatus)),
+				"country": g.Dimensions.ClientCountryName,
+			}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
+
+			if zoneCustomerError5xx != nil {
+				// Increment the Prometheus metric for 5xx errors
+				zoneCustomerError5xx.With(labels).Add(float64(g.Count))
+			}
+
+		}
+
+	}
+
 }
 
 func addHTTPRequestsEdgeCountryHost(z *models.ZoneRespHTTPRequestsEdge, name string, account string) {
@@ -1526,49 +1603,49 @@ func addHTTPRequestsEdgeCountryHost(z *models.ZoneRespHTTPRequestsEdge, name str
 
 	}
 
-	// Process `HTTPRequestsEdgeCountryHost` and EdgeResponseStatus for 4xx
-	for _, g := range z.HTTPRequestsEdgeCountryHost {
-		statusCode := g.Dimensions.EdgeResponseStatus
+	// // Process `HTTPRequestsEdgeCountryHost` and EdgeResponseStatus for 4xx
+	// for _, g := range z.HTTPRequestsEdgeCountryHost {
+	// 	statusCode := g.Dimensions.EdgeResponseStatus
 
-		// Check if the status code is a 4xx error
-		if statusCode >= 400 && statusCode < 500 {
-			// Generate labels dynamically using getLabels()
-			labels := getLabels(prometheus.Labels{
-				"zone":    name,
-				"account": account,
-				"status":  strconv.Itoa(int(g.Dimensions.EdgeResponseStatus)),
-				"country": g.Dimensions.ClientCountryName,
-			}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
+	// 	// Check if the status code is a 4xx error
+	// 	if statusCode >= 400 && statusCode < 500 {
+	// 		// Generate labels dynamically using getLabels()
+	// 		labels := getLabels(prometheus.Labels{
+	// 			"zone":    name,
+	// 			"account": account,
+	// 			"status":  strconv.Itoa(int(g.Dimensions.EdgeResponseStatus)),
+	// 			"country": g.Dimensions.ClientCountryName,
+	// 		}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
 
-			if zoneCustomerError4xx != nil {
-				// Increment the Prometheus metric for 4xx errors
-				zoneCustomerError4xx.With(labels).Add(float64(g.Count))
-			}
-		}
-	}
+	// 		if zoneCustomerError4xx != nil {
+	// 			// Increment the Prometheus metric for 4xx errors
+	// 			zoneCustomerError4xx.With(labels).Add(float64(g.Count))
+	// 		}
+	// 	}
+	// }
 
-	// Process `HTTPRequestsEdgeCountryHost` and EdgeResponseStatus for 5xx
-	for _, g := range z.HTTPRequestsEdgeCountryHost {
-		statusCode := g.Dimensions.EdgeResponseStatus
+	// // Process `HTTPRequestsEdgeCountryHost` and EdgeResponseStatus for 5xx
+	// for _, g := range z.HTTPRequestsEdgeCountryHost {
+	// 	statusCode := g.Dimensions.EdgeResponseStatus
 
-		// Check if the status code is a 5xx error
-		if statusCode >= 500 {
-			// Generate labels dynamically using getLabels()
-			labels := getLabels(prometheus.Labels{
-				"zone":    name,
-				"account": account,
-				"status":  strconv.Itoa(int(g.Dimensions.EdgeResponseStatus)),
-				"country": g.Dimensions.ClientCountryName,
-			}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
+	// 	// Check if the status code is a 5xx error
+	// 	if statusCode >= 500 {
+	// 		// Generate labels dynamically using getLabels()
+	// 		labels := getLabels(prometheus.Labels{
+	// 			"zone":    name,
+	// 			"account": account,
+	// 			"status":  strconv.Itoa(int(g.Dimensions.EdgeResponseStatus)),
+	// 			"country": g.Dimensions.ClientCountryName,
+	// 		}, g.Dimensions.ClientRequestHTTPHost) // Pass host dynamically
 
-			if zoneCustomerError5xx != nil {
-				// Increment the Prometheus metric for 5xx errors
-				zoneCustomerError5xx.With(labels).Add(float64(g.Count))
-			}
+	// 		if zoneCustomerError5xx != nil {
+	// 			// Increment the Prometheus metric for 5xx errors
+	// 			zoneCustomerError5xx.With(labels).Add(float64(g.Count))
+	// 		}
 
-		}
+	// 	}
 
-	}
+	// }
 
 	// Process `HTTPRequestsEdgeCountryHost` and EdgeResponseStatus for 5xx
 	for _, g := range z.HTTPRequestsEdgeCountryHost {

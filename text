@@ -83,7 +83,7 @@ docker run --rm -p 8080:8080 --name cloudflare-exporter \
   -e CF_API_TOKEN="DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" cloudflare-exporter
 
 
-grafana dashboard:
+grafana dashboard:  
 
 http://localhost:3000
 
@@ -123,3 +123,12 @@ ___________________
 
 ; ./connector-service --listen ":8080" --cf_api_token "Hc-ahsq0Fv7aclAIMykVVDJ5A8ShDawyMMJSCqtF" --cf_zones "automen.io"
 ___________________________________________________________
+
+// httpRequestsEdgeCountryHost: httpRequestsAdaptiveGroups(limit: $limit, filter: { datetime_geq: $mintime, datetime_lt: $maxtime }) {
+					// 	count
+					// 	dimensions {
+					// 		edgeResponseStatus
+					// 		clientCountryName
+					// 		clientRequestHTTPHost
+					// 	}
+					// }
