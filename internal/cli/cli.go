@@ -70,6 +70,10 @@ func Execute() error {
 	viper.BindEnv("cf_query_limit")
 	viper.SetDefault("cf_query_limit", 1000)
 
+	flags.Bool("cf_http_status_group", false, "query limit for cloudflare API")
+	viper.BindEnv("cf_http_status_group")
+	viper.SetDefault("cf_http_status_group", false)
+
 	viper.BindPFlags(flags)
 	return cmd.Execute()
 }

@@ -1273,39 +1273,86 @@ func addHTTPGroups(z *models.ZoneRespHTTPGroups, name string, account string) {
 	// 	zoneRequestHTTPStatus.With(prometheus.Labels{"zone": name, "account": account, "status": strconv.Itoa(status.EdgeResponseStatus)}).Add(float64(status.Requests))
 	// }
 
-	// Define status code groups with uint64 to match Cloudflare's type
-	statusGroups := map[string]uint64{
-		"1xx": 0,
-		"2xx": 0,
-		"3xx": 0,
-		"4xx": 0,
-		"5xx": 0,
-	}
+	// // Define status code groups with uint64 to match Cloudflare's type
+	// statusGroups := map[string]uint64{
+	// 	"1xx": 0,
+	// 	"2xx": 0,
+	// 	"3xx": 0,
+	// 	"4xx": 0,
+	// 	"5xx": 0,
+	// }
 
-	// Aggregate counts by group
-	for _, status := range zt.Sum.ResponseStatus {
-		code := status.EdgeResponseStatus
-		switch {
-		case code < 200:
-			statusGroups["1xx"] += status.Requests
-		case code < 300:
-			statusGroups["2xx"] += status.Requests
-		case code < 400:
-			statusGroups["3xx"] += status.Requests
-		case code < 500:
-			statusGroups["4xx"] += status.Requests
-		default:
-			statusGroups["5xx"] += status.Requests
+	// // Aggregate counts by group
+	// for _, status := range zt.Sum.ResponseStatus {
+	// 	code := status.EdgeResponseStatus
+	// 	switch {
+	// 	case code < 200:
+	// 		statusGroups["1xx"] += status.Requests
+	// 	case code < 300:
+	// 		statusGroups["2xx"] += status.Requests
+	// 	case code < 400:
+	// 		statusGroups["3xx"] += status.Requests
+	// 	case code < 500:
+	// 		statusGroups["4xx"] += status.Requests
+	// 	default:
+	// 		statusGroups["5xx"] += status.Requests
+	// 	}
+	// }
+
+	// // Emit metrics for each group
+	// for group, count := range statusGroups {
+	// 	zoneRequestHTTPStatus.With(prometheus.Labels{
+	// 		"zone":    name,
+	// 		"account": account,
+	// 		"status":  group,
+	// 	}).Add(float64(count))
+	// }
+
+	groupStatus := viper.GetBool("cf_http_status_group")
+
+	if groupStatus {
+		// Grouped: 2xx, 4xx, etc.
+		statusGroups := map[string]uint64{
+			"1xx": 0,
+			"2xx": 0,
+			"3xx": 0,
+			"4xx": 0,
+			"5xx": 0,
 		}
-	}
 
-	// Emit metrics for each group
-	for group, count := range statusGroups {
-		zoneRequestHTTPStatus.With(prometheus.Labels{
-			"zone":    name,
-			"account": account,
-			"status":  group,
-		}).Add(float64(count))
+		for _, status := range zt.Sum.ResponseStatus {
+			code := status.EdgeResponseStatus
+			switch {
+			case code < 200:
+				statusGroups["1xx"] += status.Requests
+			case code < 300:
+				statusGroups["2xx"] += status.Requests
+			case code < 400:
+				statusGroups["3xx"] += status.Requests
+			case code < 500:
+				statusGroups["4xx"] += status.Requests
+			default:
+				statusGroups["5xx"] += status.Requests
+			}
+		}
+
+		for group, count := range statusGroups {
+			zoneRequestHTTPStatus.With(prometheus.Labels{
+				"zone":    name,
+				"account": account,
+				"status":  group,
+			}).Add(float64(count))
+		}
+	} else {
+		// Individual: 200, 401, 503, etc.
+		for _, status := range zt.Sum.ResponseStatus {
+			codeStr := strconv.Itoa(status.EdgeResponseStatus)
+			zoneRequestHTTPStatus.With(prometheus.Labels{
+				"zone":    name,
+				"account": account,
+				"status":  codeStr,
+			}).Add(float64(status.Requests))
+		}
 	}
 
 	for _, browser := range zt.Sum.BrowserMap {
