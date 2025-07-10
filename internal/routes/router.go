@@ -95,17 +95,3 @@ func startMetricsExporter() {
 		}
 	}
 }
-
-// func startMetricsExporter() {
-// 	ticker := time.NewTicker(60 * time.Second)
-// 	defer ticker.Stop()
-// 	var wg sync.WaitGroup
-
-// 	for range ticker.C {
-// 		wg.Add(1)
-// 		go func() {
-// 			defer wg.Done()
-// 			metrics.FetchMetrics()
-// 		}()
-// 	}
-// }

@@ -112,7 +112,10 @@ Newly added_______________________________________________
 "cloudflare_magic_transit_tunnel_failures"
 "cloudflare_magic_transit_edge_colo_count"
 "cloudflare_zone_certificate_validation_status"
-
+"cloudflare_zone_origin_response_duration_ms"
+"cloudflare_zone_colocation_visits_error"              
+"cloudflare_zone_colocation_edge_response_bytes_error" 
+"cloudflare_zone_colocation_requests_total_error"      
 
 Docker file
 
@@ -141,6 +144,9 @@ Configure zones and listening port:
 ```
 docker run --rm -p 8080:8081 --name cloudflare-exporter CF_API_TOKEN=${CF_API_TOKEN} -e CF_ZONES=zoneid1,zoneid2,zoneid3 cloudflare-exporter
 ```
+
+http status grouping - cloudflare_zone_requests_status - bool [false by default. true when groupig needed]
+docker run --rm -p 8080:8080 --name cloudflare-exporter   -e CF_API_TOKEN=${CF_API_TOKEN} -e CF_HTTP_STATUS_GROUP=bool cloudflare-exporter
 
 
 ## Contributing and reporting issues

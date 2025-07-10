@@ -1,51 +1,42 @@
-/connector-service
-├── /cmd                          # Application entry point
-│   └── main.go                   # Main application file
-├── /config                       # Configuration management
-│   ├── config.yaml               # Default configuration file
-│   ├── config_test.yaml          # Test configuration file
-│   └── config.go                 # Viper configuration loader
-├── /internal                     # Internal logic (not exported as a library)
-│   ├── /client                   # HTTP client and Cloudflare GraphQL logic
-│   │   ├── graphql_client.go     # Cloudflare GraphQL client setup
-│   │   └── retryable_client.go   # HTTP client with retry mechanism
-│   ├── /middlewares              # Custom middleware implementations
-│   │   ├── cors.go               # CORS middleware
-│   │   ├── error_handler.go      # Error handler middleware
-│   │   └── logging.go            # Logging middleware
-│   ├── /routes                   # Router setup and endpoint definitions
-│   │   └── router.go             # API route definitions
-│   ├── /services                 # Business logic
-│   │   └── metrics_service.go    # Metrics generation and management
-│   ├── /metrics                  # Prometheus metrics setup
-│   │   └── prometheus_metrics.go # Prometheus metrics definition and handler
-│   ├── /handlers                 # HTTP route handlers
-│   │   ├── health_handler.go     # Health check handler
-│   │   └── graphql_handler.go    # Handler for Cloudflare GraphQL data
-│   └── /utils                    # Utility functions
-│       ├── logger.go             # Logging utility (zap or logrus)
-│       └── http_util.go          # HTTP helper functions
-├── /pkg                          # Reusable packages
-│   └── common_errors.go          # Custom error definitions and utilities
-├── /test                         # Test files and fixtures
-│   ├
-│   │   
-│   ├── /unit                     # Unit tests
-│       ├── /prometheus           # Tests for Prometheus metrics
-│       │   └── metrics_test.go   # Unit test to ensure correct Prometheus data
-│       ├── handlers_test.go      # Unit tests for HTTP route handlers
-│       └── utils_test.go         # Unit tests for utilities
-│              
-│     
-├── /build                        # CI/CD and build-related files
-│   ├── Dockerfile                # Dockerfile for building the application
-│   └── Makefile                  # Makefile for build automation
-├── /docs                         # Documentation
-│   ├── architecture.md           # High-level architecture description
-│   └── api_docs.md               # API endpoint documentation
-├── go.mod                        # Go modules dependency file
-└── go.sum                        # Go modules checksum file
-
+prasanna@PrasannaS-Vostro-3500:~/Documents/cloudflare$ tree -L 3
+.
+├── cmd
+│   └── main.go
+├── connector-service
+├── Dockerfile
+├── docs
+│   ├── api_docs.md
+│   └── architecture.md
+├── go.mod
+├── go.sum
+├── internal
+│   ├── cli
+│   │   └── cli.go
+│   ├── client
+│   │   ├── graphql_client.go
+│   │   └── retryable_client.go
+│   ├── cloudflare
+│   │   └── api.go
+│   ├── handlers
+│   │   ├── error_handers.go
+│   │   └── health_handler.go
+│   ├── limiter
+│   │   └── limiter.go
+│   ├── logging
+│   │   └── logging.go
+│   ├── metrics
+│   │   ├── handler.go
+│   │   └── prometheus_metrics.go
+│   ├── middlewares
+│   │   └── cors.go
+│   ├── models
+│   │   └── models.go
+│   └── routes
+│       └── router.go
+├── prometheus.yml
+├── query
+├── README.md
+└── text
 
 
 #the goal of such a setup is to ensure scalability, maintainability, and clean separation of concerns.
@@ -58,11 +49,13 @@ go build -o connector-service ./cmd/main.go
 "qeGgfRR0pzc7pooqbVrFME5wq3lR8N9zoSE9k7RR"  
 
 
-clirent token
-./connector-service --listen ":8080" --cf_api_token "DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" --scrape_delay 300
+client token
+./connector-service --listen ":8080" --cf_api_token "DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" --scrape_delay 120
 
 
 curl -s http://localhost:8080/metrics | grep cloudflare
+curl -s http://localhost:8080/metrics | grep cloudflare_zone_requests_status
+
 
 sudo prometheus --config.file=/home/prasanna/Documents/cloudflare/prometheus.yml --web.listen-address=":9091"
 
@@ -79,8 +72,10 @@ ___________________________________________________________
 docker run -d --rm -p 8080:8080 --name cloudflare-exporter \
   -e CF_API_TOKEN="DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" cloudflare-exporter
 
-docker run --rm -p 8080:8080 --name cloudflare-exporter \
-  -e CF_API_TOKEN="DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" cloudflare-exporter
+
+; deattached mode:live
+; docker run --rm -p 8080:8080 --name cloudflare-exporter \
+;   -e CF_API_TOKEN="DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" cloudflare-exporter
 
 
 grafana dashboard:  
@@ -117,6 +112,10 @@ _____________________
 ;   -e CF_API_TOKEN="qeGgfRR0pzc7pooqbVrFME5wq3lR8N9zoSE9k7RR" cloudflare-exporter --listen :8081
 
 
+http status group - bool
+; docker run --rm -p 8080:8080 --name cloudflare-exporter   -e CF_API_TOKEN="DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" -e CF_HTTP_STATUS_GROUP=true cloudflare-exporter
+
+
 ___________________________________________________________
 ; docker run --rm -p 8080:8080 --name cloudflare-exporter -e CF_API_KEY="c5b4557e22d50bcf0c73396c5ba9270f54737" -e CF_API_EMAIL="prasanna.sekar@sacumen.com" cloudflare-exporter
 ___________________
@@ -124,11 +123,3 @@ ___________________
 ; ./connector-service --listen ":8080" --cf_api_token "Hc-ahsq0Fv7aclAIMykVVDJ5A8ShDawyMMJSCqtF" --cf_zones "automen.io"
 ___________________________________________________________
 
-// httpRequestsEdgeCountryHost: httpRequestsAdaptiveGroups(limit: $limit, filter: { datetime_geq: $mintime, datetime_lt: $maxtime }) {
-					// 	count
-					// 	dimensions {
-					// 		edgeResponseStatus
-					// 		clientCountryName
-					// 		clientRequestHTTPHost
-					// 	}
-					// }
