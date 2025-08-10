@@ -1,0 +1,188 @@
+/connector-service
+├── /cmd                          # Application entry point
+│   └── main.go                   # Main application file
+├── /config                       # Configuration management
+│   ├── config.yaml               # Default configuration file
+│   ├── config_test.yaml          # Test configuration file
+│   └── config.go                 # Viper configuration loader
+├── /internal                     # Internal logic (not exported as a library)
+│   ├── /client                   # HTTP client and Cloudflare GraphQL logic
+│   │   ├── graphql_client.go     # Cloudflare GraphQL client setup
+│   │   └── retryable_client.go   # HTTP client with retry mechanism
+│   ├── /middlewares              # Custom middleware implementations
+│   │   ├── cors.go               # CORS middleware
+│   │   ├── error_handler.go      # Error handler middleware
+│   │   └── logging.go            # Logging middleware
+│   ├── /routes                   # Router setup and endpoint definitions
+│   │   └── router.go             # API route definitions
+│   ├── /services                 # Business logic
+│   │   └── metrics_service.go    # Metrics generation and management
+│   ├── /metrics                  # Prometheus metrics setup
+│   │   └── prometheus_metrics.go # Prometheus metrics definition and handler
+│   ├── /handlers                 # HTTP route handlers
+│   │   ├── health_handler.go     # Health check handler
+│   │   └── graphql_handler.go    # Handler for Cloudflare GraphQL data
+│   └── /utils                    # Utility functions
+│       ├── logger.go             # Logging utility (zap or logrus)
+│       └── http_util.go          # HTTP helper functions
+├── /pkg                          # Reusable packages
+│   └── common_errors.go          # Custom error definitions and utilities
+├── /test                         # Test files and fixtures
+│   ├
+│   │   
+│   ├── /unit                     # Unit tests
+│       ├── /prometheus           # Tests for Prometheus metrics
+│       │   └── metrics_test.go   # Unit test to ensure correct Prometheus data
+│       ├── handlers_test.go      # Unit tests for HTTP route handlers
+│       └── utils_test.go         # Unit tests for utilities
+│              
+│     
+├── /build                        # CI/CD and build-related files
+│   ├── Dockerfile                # Dockerfile for building the application
+│   └── Makefile                  # Makefile for build automation
+├── /docs                         # Documentation
+│   ├── architecture.md           # High-level architecture description
+│   └── api_docs.md               # API endpoint documentation
+├── go.mod                        # Go modules dependency file
+└── go.sum                        # Go modules checksum file
+
+
+
+#the goal of such a setup is to ensure scalability, maintainability, and clean separation of concerns.
+
+go build -o connector-service ./cmd/main.go
+
+
+./connector-service --listen ":8080" --cf_api_token "qeGgfRR0pzc7pooqbVrFME5wq3lR8N9zoSE9k7RR" --scrape_delay 300
+
+
+
+
+./connector-service --listen ":8080" --cf_api_token "DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" --scrape_delay 120
+
+
+
+client token
+./connector-service --listen ":8080" --cf_api_token "DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" --stale_metrics_removal "true" --scrape_delay 120
+
+
+
+zoneIDs:[75adc45af2f4d95974444395e679304d f8708858259430dd571f4c48340c911d 468af98f793967d5249d2d022c0efc89 0fea913701db668e5ab26f7b5a262d67 14e7a6de770422a72e4652e395d09931]]
+
+
+curl -s http://localhost:8080/metrics | grep cloudflare
+curl -s http://localhost:8080/metrics | grep cloudflare_zone_requests_status
+
+
+sudo prometheus --config.file=/home/prasanna/Documents/cloudflare/prometheus.yml --web.listen-address=":9091"
+
+
+docker run -d --rm -p 8080:8080 --name cloudflare-exporter \
+  -e CF_API_TOKEN="qeGgfRR0pzc7pooqbVrFME5wq3lR8N9zoSE9k7RR" cloudflare-exporter
+
+
+docker run -d --restart always -p 8080:8080 --name cloudflare-exporter \
+  -e CF_API_TOKEN="qeGgfRR0pzc7pooqbVrFME5wq3lR8N9zoSE9k7RR" cloudflare-exporter
+
+___________________________________________________________
+
+docker run -d --rm -p 8080:8080 --name cloudflare-exporter \
+  -e CF_API_TOKEN="DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" cloudflare-exporter
+
+
+; deattached mode:live
+; docker run --rm -p 8080:8080 --name cloudflare-exporter \
+;   -e CF_API_TOKEN="DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" cloudflare-exporter
+
+
+grafana dashboard:  
+
+http://localhost:3000
+
+____________________
+
+docker :
+docker build -t cloudflare-exporter .
+
+
+___________________________________________________________
+
+//Go HOME path and  create a docker tar file
+docker save -o cloudflare-exporter.tar cloudflare-exporter
+
+
+// build from tar file
+docker load -i cloudflare-exporter.tar
+
+
+
+___________________
+
+curl --http1.1 automen.io/q="select*fromtable"
+_____________________
+
+; docker run --rm -p 8080:8080 --name cloudflare-exporter \
+;   -e CF_API_TOKEN="qeGgfRR0pzc7pooqbVrFME5wq3lR8N9zoSE9k7RR" cloudflare-exporter
+
+
+; docker run --rm -p 8081:8081 --name cloudflare-exporter \
+;   -e CF_API_TOKEN="qeGgfRR0pzc7pooqbVrFME5wq3lR8N9zoSE9k7RR" cloudflare-exporter --listen :8081
+
+
+http status group - bool
+; docker run --rm -p 8080:8080 --name cloudflare-exporter   -e CF_API_TOKEN="DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" -e CF_HTTP_STATUS_GROUP=true cloudflare-exporter
+
+
+___________________________________________________________
+; docker run --rm -p 8080:8080 --name cloudflare-exporter -e CF_API_KEY="c5b4557e22d50bcf0c73396c5ba9270f54737" -e CF_API_EMAIL="prasanna.sekar@sacumen.com" cloudflare-exporter
+___________________
+
+; ./connector-service --listen ":8080" --cf_api_token "Hc-ahsq0Fv7aclAIMykVVDJ5A8ShDawyMMJSCqtF" --cf_zones "automen.io"
+___________________________________________________________
+
+// httpRequestsEdgeCountryHost: httpRequestsAdaptiveGroups(limit: $limit, filter: { datetime_geq: $mintime, datetime_lt: $maxtime }) {
+					// 	count
+					// 	dimensions {
+					// 		edgeResponseStatus
+					// 		clientCountryName
+					// 		clientRequestHTTPHost
+					// 	}
+					// }
+
+
+
+
+
+Below metrics report 0 values 
+"cloudflare_magic_transit_active_tunnels"
+"cloudflare_magic_transit_edge_colo_count"
+"cloudflare_magic_transit_healthy_tunnels"
+"Cloudflare_magic_transit_tunnel_failures"
+
+6/25/25: 
+- Waiting on MG to see about sending test data to them 
+
+7/21/25: @prasanna can you use the below account token? This will have MT data in it 
+Token: V2pj4fDBOo-Urpa72FQGrE22H7CKJV_H82PqHTDJ 
+Account: 0625a7de8ab847d9d161a6f74588e521
+
+
+client token
+./connector-service --listen ":8080" --cf_api_token "V2pj4fDBOo-Urpa72FQGrE22H7CKJV_H82PqHTDJ" --scrape_delay 120
+
+
+
+
+
+
+
+___________________________________________________________
+
+to check stale metrics :::::
+
+
+curl -s http://localhost:8080/metrics | grep ^cloudflare_zone_requests_total | wc -l
+curl -s http://localhost:8080/metrics | grep ^cloudflare_zone_requests_cached | wc -l
+curl -s http://localhost:8080/metrics | grep ^cloudflare_zone_requests_ssl_encrypted | wc -l
+
+36 out of 51

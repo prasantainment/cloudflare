@@ -74,6 +74,18 @@ func Execute() error {
 	viper.BindEnv("cf_http_status_group")
 	viper.SetDefault("cf_http_status_group", false)
 
+	flags.Bool("stale_metrics_removal", false, "removing stale metrics")
+	viper.BindEnv("stale_metrics_removal")
+	viper.SetDefault("stale_metrics_removal", false)
+
+	flags.Int("stale_metrics_duration", 15, "duration to remove stale metrics")
+	viper.BindEnv("stale_metrics_duration")
+	viper.SetDefault("stale_metrics_duration", 15)
+
+	flags.Bool("use_individual_error_codes", false, "Report individual error codes instead of grouped (e.g., 500 vs 5xx)")
+	viper.BindEnv("use_individual_error_codes")
+	viper.SetDefault("use_individual_error_codes", false)
+
 	viper.BindPFlags(flags)
 	return cmd.Execute()
 }

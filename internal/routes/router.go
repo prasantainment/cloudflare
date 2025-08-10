@@ -80,6 +80,11 @@ func startMetricsExporter() {
 	pool := workerpool.New(20)
 	defer pool.Stop()
 
+	if viper.GetBool("stale_metrics_removal") {
+		stale_metrics_duration := time.Duration(viper.GetInt("stale_metrics_duration")) * time.Minute
+		go metrics.StartStaleCleanupWorker(ctx, 10*time.Minute, stale_metrics_duration)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():

@@ -2,9 +2,12 @@ package metrics
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -891,15 +894,34 @@ func FetchWorkerAnalytics(account cloudflare.Account) {
 		for _, w := range a.WorkersInvocationsAdaptive {
 			// Add actual metrics
 			workerRequests.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName}).Add(float64(w.Sum.Requests))
+			workerRequestsTracker.Update(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName})
+
 			workerErrors.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName}).Add(float64(w.Sum.Errors))
+			workerErrorsTracker.Update(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName})
+
 			workerCPUTime.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P50"}).Set(float64(w.Quantiles.CPUTimeP50))
+			workerCPUTimeTracker.Update(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P50"})
+
 			workerCPUTime.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P75"}).Set(float64(w.Quantiles.CPUTimeP75))
+			workerCPUTimeTracker.Update(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P75"})
+
 			workerCPUTime.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P99"}).Set(float64(w.Quantiles.CPUTimeP99))
+			workerCPUTimeTracker.Update(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P99"})
+
 			workerCPUTime.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P999"}).Set(float64(w.Quantiles.CPUTimeP999))
+			workerCPUTimeTracker.Update(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P999"})
+
 			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P50"}).Set(math.Round(float64(w.Quantiles.DurationP50)*1000) / 1000)
+			workerDurationTracker.Update(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P50"})
+
 			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P75"}).Set(math.Round(float64(w.Quantiles.DurationP75)*1000) / 1000)
+			workerDurationTracker.Update(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P75"})
+
 			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P99"}).Set(math.Round(float64(w.Quantiles.DurationP99)*1000) / 1000)
+			workerDurationTracker.Update(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P99"})
+
 			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P999"}).Set(math.Round(float64(w.Quantiles.DurationP999)*1000) / 1000)
+			workerDurationTracker.Update(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "quantile": "P999"})
 		}
 	}
 }
@@ -1001,6 +1023,13 @@ func fetchLogpushAnalyticsForAccount(account cloudflare.Account) {
 				"job_id":       strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.JobID),
 				"final":        strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.Final),
 			}).Add(float64(LogpushHealthAdaptiveGroup.Count))
+			logpushFailedJobsAccountTracker.Update(prometheus.Labels{
+				"account":      account.Name,
+				"account_type": account.Type,
+				"destination":  LogpushHealthAdaptiveGroup.Dimensions.DestinationType,
+				"job_id":       strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.JobID),
+				"final":        strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.Final),
+			})
 		}
 	}
 }
@@ -1013,12 +1042,12 @@ func fetchMagicTransitHealth(account cloudflare.Account) {
 				"accountID": account.ID,
 				"panic":     r,
 			})
-			// Optionally, set default metrics here as well
 		}
 	}()
 
 	// Fetch data from the Magic Transit API
 	r, err := cloudflareAPI.MagicTransitTunnelHealthChecksAdaptiveGroups(account.ID)
+	// r, err := cloudflareAPI.MockMagicTransitResponse()
 	if err != nil {
 		logging.Error("Failed to fetch Magic Transit data", map[string]interface{}{
 			"accountID": account.ID,
@@ -1037,7 +1066,7 @@ func fetchMagicTransitHealth(account cloudflare.Account) {
 
 	// Process metrics from the API response
 	for _, acc := range r.Viewer.Accounts {
-		fmt.Println(":::::::::::::::::::::::::::::", acc.MagicTransitTunnelHealthChecksAdaptiveGroups)
+		fmt.Println("MagicTransitTunnelHealthChecksAdaptiveGroups:::::::::::::::::::::::::::::", acc.MagicTransitTunnelHealthChecksAdaptiveGroups)
 		for _, group := range acc.MagicTransitTunnelHealthChecksAdaptiveGroups {
 			if group.Dimensions.Active == 1 {
 				activeTunnels++
@@ -1055,9 +1084,16 @@ func fetchMagicTransitHealth(account cloudflare.Account) {
 
 	// Set Prometheus metrics
 	magicTransitActiveTunnel.With(prometheus.Labels{"account": account.Name, "account_type": account.Type}).Set(activeTunnels)
+	magicTransitActiveTunnelTracker.Update(prometheus.Labels{"account": account.Name, "account_type": account.Type})
+
 	magicTransitHealthyTunnel.With(prometheus.Labels{"account": account.Name, "account_type": account.Type}).Set(healthyTunnels)
+	magicTransitHealthyTunnelTracker.Update(prometheus.Labels{"account": account.Name, "account_type": account.Type})
+
 	magicTransitTunnelFailure.With(prometheus.Labels{"account": account.Name, "account_type": account.Type}).Set(tunnelFailures)
+	magicTransitTunnelFailureTracker.Update(prometheus.Labels{"account": account.Name, "account_type": account.Type})
+
 	magicTransitEdgeColo.With(prometheus.Labels{"account": account.Name, "account_type": account.Type}).Set(edgeColoCount)
+	magicTransitEdgeColoTracker.Update(prometheus.Labels{"account": account.Name, "account_type": account.Type})
 }
 
 func filterNonFreePlanZones(zones []cloudflare.Zone) (filteredZones []cloudflare.Zone) {
@@ -1184,19 +1220,32 @@ func addHTTPGroups(z *models.ZoneRespHTTPGroups, name string, account string) {
 
 	// Update metrics with actual data
 	zoneRequestTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.Requests))
+	zoneRequestTotalTracker.Update(prometheus.Labels{"zone": name, "account": account})
+
 	zoneRequestCached.With(prometheus.Labels{"zone": name, "account": account}).Set(float64(zt.Sum.CachedRequests))
+	zoneRequestCachedTracker.Update(prometheus.Labels{"zone": name, "account": account})
+
 	zoneRequestSSLEncrypted.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.EncryptedRequests))
+	zoneRequestSSLEncryptedTracker.Update(prometheus.Labels{"zone": name, "account": account})
 
 	for _, ct := range zt.Sum.ContentType {
 		zoneRequestContentType.With(prometheus.Labels{"zone": name, "account": account, "content_type": ct.EdgeResponseContentType}).Add(float64(ct.Requests))
+		zoneRequestCachedTracker.Update(prometheus.Labels{"zone": name, "account": account, "content_type": ct.EdgeResponseContentType})
+
 		zoneBandwidthContentType.With(prometheus.Labels{"zone": name, "account": account, "content_type": ct.EdgeResponseContentType}).Add(float64(ct.Bytes))
+		zoneBandwidthCachedTracker.Update(prometheus.Labels{"zone": name, "account": account, "content_type": ct.EdgeResponseContentType})
 	}
 
 	for _, country := range zt.Sum.Country {
 
 		zoneRequestCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName}).Add(float64(country.Requests))
+		zoneRequestCountryTracker.Update(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName})
+
 		zoneBandwidthCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName}).Add(float64(country.Bytes))
+		zoneBandwidthCountryTracker.Update(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName})
+
 		zoneThreatsCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName}).Add(float64(country.Threats))
+		zoneThreatsCountryTracker.Update(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName})
 	}
 
 	groupStatus := viper.GetBool("cf_http_status_group")
@@ -1233,6 +1282,12 @@ func addHTTPGroups(z *models.ZoneRespHTTPGroups, name string, account string) {
 				"account": account,
 				"status":  group,
 			}).Add(float64(count))
+
+			zoneRequestHTTPStatusTracker.Update(prometheus.Labels{
+				"zone":    name,
+				"account": account,
+				"status":  group,
+			})
 		}
 	} else {
 		// Individual: 200, 401, 503, etc.
@@ -1243,27 +1298,43 @@ func addHTTPGroups(z *models.ZoneRespHTTPGroups, name string, account string) {
 				"account": account,
 				"status":  codeStr,
 			}).Add(float64(status.Requests))
+
+			zoneRequestHTTPStatusTracker.Update(prometheus.Labels{
+				"zone":    name,
+				"account": account,
+				"status":  codeStr,
+			})
 		}
 	}
 
 	for _, browser := range zt.Sum.BrowserMap {
 		zoneRequestBrowserMap.With(prometheus.Labels{"zone": name, "account": account, "family": browser.UaBrowserFamily}).Add(float64(browser.PageViews))
+		zoneRequestBrowserMapTracker.Update(prometheus.Labels{"zone": name, "account": account, "family": browser.UaBrowserFamily})
 	}
 
 	zoneBandwidthTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.Bytes))
+	zoneBandwidthTotalTracker.Update(prometheus.Labels{"zone": name, "account": account})
+
 	zoneBandwidthCached.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.CachedBytes))
+	zoneBandwidthCachedTracker.Update(prometheus.Labels{"zone": name, "account": account})
+
 	zoneBandwidthSSLEncrypted.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.EncryptedBytes))
+	zoneBandwidthSSLEncryptedTracker.Update(prometheus.Labels{"zone": name, "account": account})
 
 	zoneThreatsTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.Threats))
+	zoneThreatsTotalTracker.Update(prometheus.Labels{"zone": name, "account": account})
 
 	for _, t := range zt.Sum.ThreatPathing {
 		zoneThreatsType.With(prometheus.Labels{"zone": name, "account": account, "type": t.Name}).Add(float64(t.Requests))
+		zoneThreatsTypeTracker.Update(prometheus.Labels{"zone": name, "account": account, "type": t.Name})
 	}
 
 	zonePageviewsTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.PageViews))
+	zonePageviewsTotalTracker.Update(prometheus.Labels{"zone": name, "account": account})
 
 	// Uniques
 	zoneUniquesTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Unique.Uniques))
+	zoneUniquesTotalTracker.Update(prometheus.Labels{"zone": name, "account": account})
 
 	zoneCacheHit.With(
 		prometheus.Labels{
@@ -1272,6 +1343,12 @@ func addHTTPGroups(z *models.ZoneRespHTTPGroups, name string, account string) {
 			"requests":       strconv.FormatUint(zt.Sum.Requests, 10),
 			"cachedRequests": strconv.FormatUint(zt.Sum.CachedRequests, 10),
 		}).Set(float64(zt.Sum.CachedRequests) / float64(zt.Sum.Requests))
+	zoneCacheHitTracker.Update(prometheus.Labels{
+		"zone":           name,
+		"account":        account,
+		"requests":       strconv.FormatUint(zt.Sum.Requests, 10),
+		"cachedRequests": strconv.FormatUint(zt.Sum.CachedRequests, 10),
+	})
 
 	// Map to track HTTP method counts
 	methodCounts := make(map[string]float64)
@@ -1292,6 +1369,11 @@ func addHTTPGroups(z *models.ZoneRespHTTPGroups, name string, account string) {
 			"account": account,
 			"method":  method, // The HTTP method dimension
 		}).Add(count)
+		zoneRequestMethodTracker.Update(prometheus.Labels{
+			"zone":    name,
+			"account": account,
+			"method":  method, // The HTTP method dimension
+		})
 	}
 }
 
@@ -1317,6 +1399,10 @@ func addFirewallGroups(z *models.ZoneRespFirewallGroups, name string, account st
 				"zone":    name,
 				"account": account,
 			}).Add(float64(g.Count))
+		zoneFirewallEventsCountTracker.Update(prometheus.Labels{
+			"zone":    name,
+			"account": account,
+		})
 
 		zoneFirewallAction.With(
 			prometheus.Labels{
@@ -1324,6 +1410,11 @@ func addFirewallGroups(z *models.ZoneRespFirewallGroups, name string, account st
 				"account": account,
 				"action":  g.Dimensions.Action,
 			}).Add(float64(g.Count))
+		zoneFirewallActionTracker.Update(prometheus.Labels{
+			"zone":    name,
+			"account": account,
+			"action":  g.Dimensions.Action,
+		})
 
 		// Generate labels dynamically using getLabels()
 		zoneBotRequestsLabels := getLabels(prometheus.Labels{
@@ -1337,6 +1428,7 @@ func addFirewallGroups(z *models.ZoneRespFirewallGroups, name string, account st
 		if zoneBotRequests != nil {
 			// Use generated labels with Prometheus metric
 			zoneBotRequests.With(zoneBotRequestsLabels).Add(float64(g.Count))
+			zoneBotRequestsTracker.Update(zoneBotRequestsLabels)
 		}
 
 		// Generate labels dynamically using getLabels()
@@ -1352,6 +1444,7 @@ func addFirewallGroups(z *models.ZoneRespFirewallGroups, name string, account st
 		// zoneFirewallBotsDetected.With(labels).Add(float64(g.Count))
 		if zoneFirewallBotsDetected != nil { //  Prevents nil pointer error
 			zoneFirewallBotsDetected.With(labels).Add(float64(g.Count))
+			zoneFirewallBotsDetectedTracker.Update(labels)
 		}
 
 	}
@@ -1388,6 +1481,14 @@ func addHealthCheckGroups(z *models.ZoneRespHealthCheckGroups, name string, acco
 				// "region":        g.Dimensions.Region,
 				"fqdn": g.Dimensions.Fqdn,
 			}).Add(float64(g.Count))
+		zoneHealthCheckEventsOriginCountTracker.Update(prometheus.Labels{
+			"zone":          name,
+			"account":       account,
+			"health_status": g.Dimensions.HealthStatus,
+			"origin_ip":     g.Dimensions.OriginIP,
+			// "region":        g.Dimensions.Region,
+			"fqdn": g.Dimensions.Fqdn,
+		})
 	}
 
 	// Calculate the average health check events
@@ -1401,6 +1502,10 @@ func addHealthCheckGroups(z *models.ZoneRespHealthCheckGroups, name string, acco
 			"zone":    name,
 			"account": account,
 		}).Set(avgHealthCheckEvents)
+	zoneHealthCheckEventsAvgTracker.Update(prometheus.Labels{
+		"zone":    name,
+		"account": account,
+	})
 }
 
 func addHTTPAdaptiveGroups(z *models.ZoneRespAdaptiveGroups, name string, account string) {
@@ -1421,6 +1526,7 @@ func addHTTPAdaptiveGroups(z *models.ZoneRespAdaptiveGroups, name string, accoun
 
 		if zoneRequestOriginStatusCountryHost != nil {
 			zoneRequestOriginStatusCountryHost.With(labels).Add(float64(g.Count))
+			zoneRequestOriginStatusCountryHostTracker.Update(labels)
 		}
 
 	}
@@ -1436,6 +1542,7 @@ func addHTTPAdaptiveGroups(z *models.ZoneRespAdaptiveGroups, name string, accoun
 
 		if zoneOriginResponseDuration != nil {
 			zoneOriginResponseDuration.With(labels).Set(g.Avg.OriginResponseDurationMs)
+			zoneOriginResponseDurationTracker.Update(labels)
 		}
 
 	}
@@ -1478,6 +1585,7 @@ func addHTTPAdaptiveGroups(z *models.ZoneRespAdaptiveGroups, name string, accoun
 			if zoneCustomerError4xx != nil {
 				// Increment the Prometheus metric for 4xx errors
 				zoneCustomerError4xx.With(labels).Add(float64(g.Count))
+				zoneCustomerError4xxTracker.Update(labels)
 			}
 		}
 	}
@@ -1511,6 +1619,7 @@ func addHTTPAdaptiveGroups(z *models.ZoneRespAdaptiveGroups, name string, accoun
 			if zoneCustomerError5xx != nil {
 				// Increment the Prometheus metric for 5xx errors
 				zoneCustomerError5xx.With(labels).Add(float64(g.Count))
+				zoneCustomerError5xxTracker.Update(labels)
 			}
 
 		}
@@ -1537,6 +1646,7 @@ func addHTTPRequestsEdgeCountryHost(z *models.ZoneRespHTTPRequestsEdge, name str
 
 		if zoneRequestStatusCountryHost != nil {
 			zoneRequestStatusCountryHost.With(labels).Add(float64(g.Count))
+			zoneRequestStatusCountryHostTracker.Update(labels)
 		}
 
 	}
@@ -1558,6 +1668,7 @@ func addHTTPRequestsEdgeCountryHost(z *models.ZoneRespHTTPRequestsEdge, name str
 			if zoneEdgeError != nil {
 				// Increment the Prometheus metric for edge errors
 				zoneEdgeError.With(labels).Inc()
+				zoneEdgeErrorTracker.Update(labels)
 			}
 
 		}
@@ -1618,16 +1729,28 @@ func fetchZoneColocationAnalytics(zones []cloudflare.Zone) {
 
 			if zoneColocationVisits != nil {
 				zoneColocationVisits.With(labels).Add(float64(c.Sum.Visits))
+				zoneColocationVisitsTracker.Update(labels)
 			}
 			if zoneColocationEdgeResponseBytes != nil {
 				zoneColocationEdgeResponseBytes.With(labels).Add(float64(c.Sum.EdgeResponseBytes))
+				zoneColocationEdgeResponseBytesTracker.Update(labels)
 			}
 			if zoneColocationRequestsTotal != nil {
 				zoneColocationRequestsTotal.With(labels).Add(float64(c.Count))
+				zoneColocationRequestsTotalTracker.Update(labels)
 			}
 
 			// Only process error status codes (4xx/5xx)
 			status := c.Dimensions.OriginResponseStatus
+
+			useIndividualErrorCodes := viper.GetBool("use_individual_error_codes")
+
+			var statusLabel string
+			if useIndividualErrorCodes {
+				statusLabel = fmt.Sprintf("%d", status) // individual code
+			} else {
+				statusLabel = fmt.Sprintf("%dxx", status/100) // grouped code
+			}
 
 			if status >= 400 {
 				// Create error-specific labels
@@ -1635,18 +1758,21 @@ func fetchZoneColocationAnalytics(zones []cloudflare.Zone) {
 					"zone":       name,
 					"account":    account,
 					"colocation": c.Dimensions.ColoCode,
-					"status":     fmt.Sprintf("%dxx", status/100),
+					"status":     statusLabel,
 				}, c.Dimensions.Host) // Pass actual host dynamically
 
 				// Error-specific metrics
 				if zoneColocationVisitsError != nil {
 					zoneColocationVisitsError.With(errorLabels).Add(float64(c.Sum.Visits))
+					zoneColocationVisitsErrorTracker.Update(errorLabels)
 				}
 				if zoneColocationEdgeResponseBytesError != nil {
 					zoneColocationEdgeResponseBytesError.With(errorLabels).Add(float64(c.Sum.EdgeResponseBytes))
+					zoneColocationEdgeResponseBytesErrorTracker.Update(errorLabels)
 				}
 				if zoneColocationRequestsTotalError != nil {
 					zoneColocationRequestsTotalError.With(errorLabels).Add(float64(c.Count))
+					zoneColocationRequestsTotalErrorTracker.Update(errorLabels)
 				}
 			}
 
@@ -1713,6 +1839,13 @@ func addLoadBalancingRequestsAdaptiveGroups(z *models.LbResp, name string, accou
 				"pool_name":          g.Dimensions.SelectedPoolName,
 				"origin_name":        g.Dimensions.SelectedOriginName,
 			}).Add(float64(g.Count))
+		poolRequestsTotalTracker.Update(prometheus.Labels{
+			"zone":               name,
+			"account":            account,
+			"load_balancer_name": g.Dimensions.LbName,
+			"pool_name":          g.Dimensions.SelectedPoolName,
+			"origin_name":        g.Dimensions.SelectedOriginName,
+		})
 	}
 }
 
@@ -1736,6 +1869,12 @@ func addLoadBalancingRequestsAdaptive(z *models.LbResp, name string, account str
 					"load_balancer_name": g.LbName,
 					"pool_name":          p.PoolName,
 				}).Set(float64(p.Healthy))
+			poolHealthStatusTracker.Update(prometheus.Labels{
+				"zone":               name,
+				"account":            account,
+				"load_balancer_name": g.LbName,
+				"pool_name":          p.PoolName,
+			})
 		}
 	}
 }
@@ -1780,12 +1919,22 @@ func fetchLogpushAnalyticsForZone(zones []cloudflare.Zone) {
 					"job_id":      strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.JobID),
 					"final":       strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.Final),
 				}).Add(0)
+				logpushFailedJobsZoneTracker.Update(prometheus.Labels{
+					"destination": LogpushHealthAdaptiveGroup.Dimensions.DestinationType,
+					"job_id":      strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.JobID),
+					"final":       strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.Final),
+				})
 			} else {
 				logpushFailedJobsZone.With(prometheus.Labels{
 					"destination": LogpushHealthAdaptiveGroup.Dimensions.DestinationType,
 					"job_id":      strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.JobID),
 					"final":       strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.Final),
 				}).Add(float64(LogpushHealthAdaptiveGroup.Count))
+				logpushFailedJobsZoneTracker.Update(prometheus.Labels{
+					"destination": LogpushHealthAdaptiveGroup.Dimensions.DestinationType,
+					"job_id":      strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.JobID),
+					"final":       strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.Final),
+				})
 			}
 		}
 	}
@@ -1859,6 +2008,12 @@ func fetchSSLCertificateStatus(zones []cloudflare.Zone) {
 				"status":    certificateStatus,
 				"issuer":    certificate.Issuer,
 			}).Set(expiresOnTimestamp)
+			zoneCertificateValidationTracker.Update(prometheus.Labels{
+				"zone_id":   zone.ZoneID,
+				"zone_name": zoneName,
+				"status":    certificateStatus,
+				"issuer":    certificate.Issuer,
+			})
 		}
 	}
 
@@ -1906,7 +2061,6 @@ func FetchMetrics(ctx context.Context, pool *workerpool.WorkerPool) error {
 				logging.Error("Rate limit exceeded in worker", err)
 				return
 			}
-			fmt.Println("::::::::::::::::before calling")
 			fetchMagicTransitHealth(acc)
 		})
 	}
@@ -1984,3 +2138,335 @@ func fetchInitialData(ctx context.Context) ([]cloudflare.Zone, []cloudflare.Acco
 
 	return zones, accounts, nil
 }
+
+func hashLabels(labels prometheus.Labels) string {
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	h := sha1.New()
+	for _, k := range keys {
+		h.Write([]byte(k))
+		h.Write([]byte(labels[k]))
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+type MetricTracker struct {
+	lastSeen      sync.Map
+	deleteHandler func(labels prometheus.Labels) bool
+}
+
+func (mt *MetricTracker) Update(labels prometheus.Labels) {
+	key := hashLabels(labels)
+	mt.lastSeen.Store(key, struct {
+		t      time.Time
+		labels prometheus.Labels
+	}{
+		t:      time.Now(),
+		labels: labels,
+	})
+}
+
+func (mt *MetricTracker) CleanupStale(stalePeriod time.Duration) {
+	now := time.Now()
+	mt.lastSeen.Range(func(key, value any) bool {
+		if val, ok := value.(struct {
+			t      time.Time
+			labels prometheus.Labels
+		}); ok {
+			if now.Sub(val.t) > stalePeriod {
+				if mt.deleteHandler(val.labels) {
+					mt.lastSeen.Delete(key)
+				}
+			}
+		}
+		return true
+	})
+}
+
+func StartStaleCleanupWorker(ctx context.Context, interval, stalePeriod time.Duration) {
+	logging.Info("Starting stale metrics cleanup: default expiration duration set to 15 minutes")
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			logging.Info("Stale cleanup worker stopped")
+			return
+		case <-ticker.C:
+			logging.Info("Cleaning up stale metrics")
+
+			// Call CleanupStale on each metric tracker
+			zoneRequestTotalTracker.CleanupStale(stalePeriod)
+			zoneRequestCachedTracker.CleanupStale(stalePeriod)
+			zoneRequestSSLEncryptedTracker.CleanupStale(stalePeriod)
+			zoneRequestContentTypeTracker.CleanupStale(stalePeriod)
+			zoneRequestCountryTracker.CleanupStale(stalePeriod)
+			zoneRequestHTTPStatusTracker.CleanupStale(stalePeriod)
+			zoneRequestBrowserMapTracker.CleanupStale(stalePeriod)
+			zoneBandwidthTotalTracker.CleanupStale(stalePeriod)
+			zoneBandwidthCachedTracker.CleanupStale(stalePeriod)
+			zoneBandwidthSSLEncryptedTracker.CleanupStale(stalePeriod)
+			zoneBandwidthContentTypeTracker.CleanupStale(stalePeriod)
+			zoneBandwidthCountryTracker.CleanupStale(stalePeriod)
+			zoneThreatsTotalTracker.CleanupStale(stalePeriod)
+			zoneThreatsCountryTracker.CleanupStale(stalePeriod)
+			zoneThreatsTypeTracker.CleanupStale(stalePeriod)
+			zonePageviewsTotalTracker.CleanupStale(stalePeriod)
+			zoneUniquesTotalTracker.CleanupStale(stalePeriod)
+			zoneFirewallEventsCountTracker.CleanupStale(stalePeriod)
+			zoneHealthCheckEventsOriginCountTracker.CleanupStale(stalePeriod)
+			workerRequestsTracker.CleanupStale(stalePeriod)
+			workerErrorsTracker.CleanupStale(stalePeriod)
+			workerCPUTimeTracker.CleanupStale(stalePeriod)
+			workerDurationTracker.CleanupStale(stalePeriod)
+			poolHealthStatusTracker.CleanupStale(stalePeriod)
+			poolRequestsTotalTracker.CleanupStale(stalePeriod)
+			logpushFailedJobsAccountTracker.CleanupStale(stalePeriod)
+			logpushFailedJobsZoneTracker.CleanupStale(stalePeriod)
+			zoneCacheHitTracker.CleanupStale(stalePeriod)
+			zoneHealthCheckEventsAvgTracker.CleanupStale(stalePeriod)
+			zoneFirewallActionTracker.CleanupStale(stalePeriod)
+			zoneRequestMethodTracker.CleanupStale(stalePeriod)
+			magicTransitActiveTunnelTracker.CleanupStale(stalePeriod)
+			magicTransitHealthyTunnelTracker.CleanupStale(stalePeriod)
+			magicTransitTunnelFailureTracker.CleanupStale(stalePeriod)
+			magicTransitEdgeColoTracker.CleanupStale(stalePeriod)
+			zoneCertificateValidationTracker.CleanupStale(stalePeriod)
+			//
+			zoneRequestOriginStatusCountryHostTracker.CleanupStale(stalePeriod)
+			zoneRequestStatusCountryHostTracker.CleanupStale(stalePeriod)
+			zoneColocationVisitsTracker.CleanupStale(stalePeriod)
+			zoneColocationEdgeResponseBytesTracker.CleanupStale(stalePeriod)
+			zoneColocationRequestsTotalTracker.CleanupStale(stalePeriod)
+			zoneCustomerError4xxTracker.CleanupStale(stalePeriod)
+			zoneCustomerError5xxTracker.CleanupStale(stalePeriod)
+			zoneEdgeErrorTracker.CleanupStale(stalePeriod)
+			zoneOriginErrorTracker.CleanupStale(stalePeriod)
+			zoneFirewallBotsDetectedTracker.CleanupStale(stalePeriod)
+			zoneBotRequestsTracker.CleanupStale(stalePeriod)
+			zoneOriginResponseDurationTracker.CleanupStale(stalePeriod)
+			zoneColocationVisitsErrorTracker.CleanupStale(stalePeriod)
+			zoneColocationEdgeResponseBytesErrorTracker.CleanupStale(stalePeriod)
+			zoneColocationRequestsTotalErrorTracker.CleanupStale(stalePeriod)
+		}
+	}
+}
+
+var (
+	zoneRequestTotalTracker = &MetricTracker{
+		deleteHandler: func(labels prometheus.Labels) bool {
+			return zoneRequestTotal.Delete(labels)
+		},
+	}
+
+	zoneRequestCachedTracker = &MetricTracker{
+		deleteHandler: func(labels prometheus.Labels) bool {
+			return zoneRequestCached.Delete(labels)
+		},
+	}
+
+	zoneRequestSSLEncryptedTracker = &MetricTracker{
+		deleteHandler: func(labels prometheus.Labels) bool {
+			return zoneRequestSSLEncrypted.Delete(labels)
+		},
+	}
+
+	zoneRequestContentTypeTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneRequestContentType.Delete(labels)
+	}}
+
+	zoneRequestCountryTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneRequestCountry.Delete(labels)
+	}}
+
+	zoneRequestHTTPStatusTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneRequestHTTPStatus.Delete(labels)
+	}}
+
+	zoneRequestBrowserMapTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneRequestBrowserMap.Delete(labels)
+	}}
+
+	zoneBandwidthTotalTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneBandwidthTotal.Delete(labels)
+	}}
+
+	zoneBandwidthCachedTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneBandwidthCached.Delete(labels)
+	}}
+
+	zoneBandwidthSSLEncryptedTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneBandwidthSSLEncrypted.Delete(labels)
+	}}
+
+	zoneBandwidthContentTypeTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneBandwidthContentType.Delete(labels)
+	}}
+
+	zoneBandwidthCountryTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneBandwidthCountry.Delete(labels)
+	}}
+
+	zoneThreatsTotalTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneThreatsTotal.Delete(labels)
+	}}
+
+	zoneThreatsCountryTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneThreatsCountry.Delete(labels)
+	}}
+
+	zoneThreatsTypeTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneThreatsType.Delete(labels)
+	}}
+
+	zonePageviewsTotalTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zonePageviewsTotal.Delete(labels)
+	}}
+
+	zoneUniquesTotalTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneUniquesTotal.Delete(labels)
+	}}
+
+	zoneFirewallEventsCountTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneFirewallEventsCount.Delete(labels)
+	}}
+
+	zoneHealthCheckEventsOriginCountTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneHealthCheckEventsOriginCount.Delete(labels)
+	}}
+
+	workerRequestsTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return workerRequests.Delete(labels)
+	}}
+
+	workerErrorsTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return workerErrors.Delete(labels)
+	}}
+
+	workerCPUTimeTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return workerCPUTime.Delete(labels)
+	}}
+
+	workerDurationTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return workerDuration.Delete(labels)
+	}}
+
+	poolHealthStatusTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return poolHealthStatus.Delete(labels)
+	}}
+
+	poolRequestsTotalTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return poolRequestsTotal.Delete(labels)
+	}}
+
+	logpushFailedJobsAccountTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return logpushFailedJobsAccount.Delete(labels)
+	}}
+
+	logpushFailedJobsZoneTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return logpushFailedJobsZone.Delete(labels)
+	}}
+
+	zoneCacheHitTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneCacheHit.Delete(labels)
+	}}
+
+	zoneHealthCheckEventsAvgTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneHealthCheckEventsAvg.Delete(labels)
+	}}
+
+	zoneFirewallActionTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneFirewallAction.Delete(labels)
+	}}
+
+	zoneRequestMethodTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneRequestMethod.Delete(labels)
+	}}
+
+	magicTransitActiveTunnelTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return magicTransitActiveTunnel.Delete(labels)
+	}}
+
+	magicTransitHealthyTunnelTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return magicTransitHealthyTunnel.Delete(labels)
+	}}
+
+	magicTransitTunnelFailureTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return magicTransitTunnelFailure.Delete(labels)
+	}}
+
+	magicTransitEdgeColoTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return magicTransitEdgeColo.Delete(labels)
+	}}
+
+	zoneCertificateValidationTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneCertificateValidation.Delete(labels)
+	}}
+
+	//
+
+	zoneRequestOriginStatusCountryHostTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneRequestOriginStatusCountryHost.Delete(labels)
+	}}
+
+	zoneRequestStatusCountryHostTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneRequestStatusCountryHost.Delete(labels)
+	}}
+
+	zoneColocationVisitsTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneColocationVisits.Delete(labels)
+	}}
+
+	zoneColocationEdgeResponseBytesTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneColocationEdgeResponseBytes.Delete(labels)
+	}}
+
+	zoneColocationRequestsTotalTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneColocationRequestsTotal.Delete(labels)
+	}}
+
+	zoneCustomerError4xxTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneCustomerError4xx.Delete(labels)
+	}}
+
+	zoneCustomerError5xxTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneCustomerError5xx.Delete(labels)
+	}}
+
+	zoneEdgeErrorTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneEdgeError.Delete(labels)
+	}}
+
+	zoneOriginErrorTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneOriginError.Delete(labels)
+	}}
+
+	zoneFirewallBotsDetectedTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneFirewallBotsDetected.Delete(labels)
+	}}
+
+	zoneBotRequestsTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneBotRequests.Delete(labels)
+	}}
+
+	zoneOriginResponseDurationTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneOriginResponseDuration.Delete(labels)
+	}}
+
+	zoneColocationVisitsErrorTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneColocationVisitsError.Delete(labels)
+	}}
+
+	zoneColocationEdgeResponseBytesErrorTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneColocationEdgeResponseBytesError.Delete(labels)
+	}}
+
+	zoneColocationRequestsTotalErrorTracker = &MetricTracker{deleteHandler: func(labels prometheus.Labels) bool {
+		return zoneColocationRequestsTotalError.Delete(labels)
+	}}
+)
