@@ -1743,7 +1743,7 @@ func fetchZoneColocationAnalytics(zones []cloudflare.Zone) {
 			// Only process error status codes (4xx/5xx)
 			status := c.Dimensions.OriginResponseStatus
 
-			useIndividualErrorCodes := viper.GetBool("use_individual_error_codes")
+			useIndividualErrorCodes := viper.GetBool("use_individual_error_code")
 
 			var statusLabel string
 			if useIndividualErrorCodes {

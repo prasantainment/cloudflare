@@ -82,9 +82,9 @@ func Execute() error {
 	viper.BindEnv("stale_metrics_duration")
 	viper.SetDefault("stale_metrics_duration", 15)
 
-	flags.Bool("use_individual_error_codes", false, "Report individual error codes instead of grouped (e.g., 500 vs 5xx)")
-	viper.BindEnv("use_individual_error_codes")
-	viper.SetDefault("use_individual_error_codes", false)
+	flags.Bool("use_individual_error_code", false, "Report individual error codes when true instead of grouped (e.g., 500 vs 5xx)")
+	viper.BindEnv("use_individual_error_code")
+	viper.SetDefault("use_individual_error_code", false)
 
 	viper.BindPFlags(flags)
 	return cmd.Execute()

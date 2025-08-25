@@ -62,6 +62,7 @@ go build -o connector-service ./cmd/main.go
 
 
 
+stale metrics removal = true - make stale metrics removed
 client token
 ./connector-service --listen ":8080" --cf_api_token "DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" --stale_metrics_removal "true" --scrape_delay 120
 
