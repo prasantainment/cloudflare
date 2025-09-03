@@ -393,11 +393,14 @@ type ZoneRespFirewallGroups struct {
 	FirewallEventsAdaptiveGroups []struct {
 		Count      uint64 `json:"count"`
 		Dimensions struct {
-			Action                string `json:"action"`
-			Source                string `json:"source"`
-			RuleID                string `json:"ruleId"`
-			ClientCountryName     string `json:"clientCountryName"`
-			ClientRequestHTTPHost string `json:"clientRequestHTTPHost"`
+			Action                  string `json:"action"`
+			Source                  string `json:"source"`
+			RuleID                  string `json:"ruleId"`
+			ClientCountryName       string `json:"clientCountryName"`
+			ClientRequestHTTPHost   string `json:"clientRequestHTTPHost"`
+			ClientRequestPath       string `json:"clientRequestPath"`           // matches query
+			ClientRequestHTTPMethod string `json:"clientRequestHTTPMethodName"` // fixed tag
+			EdgeResponseStatus      int    `json:"edgeResponseStatus"`
 		} `json:"dimensions"`
 	} `json:"firewallEventsAdaptiveGroups"`
 

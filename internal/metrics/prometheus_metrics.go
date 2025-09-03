@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -283,7 +284,7 @@ var (
 	zoneFirewallAction = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: zoneFirewallRequestAction.String(),
 		Help: "Number of Firewall events",
-	}, []string{"zone", "account", "action"},
+	}, []string{"zone", "account", "action", "ruleId", "path", "method"},
 	)
 
 	zoneRequestMethod = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -1377,6 +1378,51 @@ func addHTTPGroups(z *models.ZoneRespHTTPGroups, name string, account string) {
 	}
 }
 
+var (
+	filePattern    = regexp.MustCompile(`[^/]+$`)                       // last segment → {file}
+	idPattern      = regexp.MustCompile(`[0-9a-fA-F]{6,}`)              // collapse numbers/uuids → {id}
+	versionPattern = regexp.MustCompile(`\d{4}\.\d{2}\.\d{2}|\d+\.\d+`) // collapse versions/dates
+)
+
+// normalizeRequestPath reduces cardinality of paths for Prometheus labels
+func normalizeRequestPath(path string, maxLen int) string {
+	if path == "" {
+		return "/"
+	}
+
+	// 1. strip query params
+	if i := strings.Index(path, "?"); i != -1 {
+		path = path[:i]
+	}
+
+	// 2. collapse duplicate slashes
+	for strings.Contains(path, "//") {
+		path = strings.ReplaceAll(path, "//", "/")
+	}
+
+	// 3. collapse version-like segments (dates, semantic versions)
+	path = versionPattern.ReplaceAllString(path, "{version}")
+
+	// 4. collapse filename (last segment) to {file}
+	path = filePattern.ReplaceAllString(path, "{file}")
+
+	// 5. collapse numeric IDs / UUIDs
+	path = idPattern.ReplaceAllString(path, "{id}")
+
+	// 6. limit depth (keep first 3 levels max)
+	parts := strings.Split(path, "/")
+	if len(parts) > 4 {
+		path = strings.Join(parts[:4], "/") + "/..."
+	}
+
+	// 7. truncate for safety
+	if len(path) > maxLen {
+		return path[:maxLen] + "..."
+	}
+
+	return path
+}
+
 func addFirewallGroups(z *models.ZoneRespFirewallGroups, name string, account string) {
 
 	if z == nil {
@@ -1388,9 +1434,6 @@ func addFirewallGroups(z *models.ZoneRespFirewallGroups, name string, account st
 	if len(z.FirewallEventsAdaptiveGroups) == 0 {
 		return
 	}
-
-	// Fetch firewall rules map
-	// rulesMap := cloudflareAPI.FetchFirewallRules(z.ZoneTag)
 
 	// Process each firewall event group
 	for _, g := range z.FirewallEventsAdaptiveGroups {
@@ -1404,12 +1447,19 @@ func addFirewallGroups(z *models.ZoneRespFirewallGroups, name string, account st
 			"account": account,
 		})
 
+		rawPath := g.Dimensions.ClientRequestPath
+		normPath := normalizeRequestPath(rawPath, 50)
+
 		zoneFirewallAction.With(
 			prometheus.Labels{
 				"zone":    name,
 				"account": account,
 				"action":  g.Dimensions.Action,
+				"ruleId":  g.Dimensions.RuleID,
+				"path":    normPath,
+				"method":  g.Dimensions.ClientRequestHTTPMethod,
 			}).Add(float64(g.Count))
+
 		zoneFirewallActionTracker.Update(prometheus.Labels{
 			"zone":    name,
 			"account": account,

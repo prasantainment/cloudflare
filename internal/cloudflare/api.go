@@ -313,6 +313,9 @@ func FetchFirewallMetrics(ctx context.Context, zoneIDs []string) (*models.Cloudf
 						ruleId
 						clientRequestHTTPHost
 						clientCountryName
+						clientRequestHTTPMethodName 
+						clientRequestPath
+						edgeResponseStatus
 						}
 					}
 				}
@@ -1197,60 +1200,6 @@ func FetchFirewallEventsAllowedDenied(zoneIDs []string) (*models.CloudflareRespo
 
 	return &resp, nil
 }
-
-// func MockMagicTransitResponse() (*models.CloudflareResponseMagicTransit, error) {
-// 	uniqueSuffix := time.Now().UTC().UnixNano() // ensure new value on each call
-
-// 	return &models.CloudflareResponseMagicTransit{
-// 		Viewer: struct {
-// 			Accounts []models.MagicTransitAccount `json:"accounts"`
-// 		}{
-// 			Accounts: []models.MagicTransitAccount{
-// 				{
-// 					MagicTransitTunnelHealthChecksAdaptiveGroups: []struct {
-// 						Count      uint64 `json:"count"`
-// 						Dimensions struct {
-// 							Active           uint8  `json:"active"`
-// 							Datetime         string `json:"datetime"`
-// 							EdgeColoCity     string `json:"edgeColoCity"`
-// 							EdgeColoCountry  string `json:"edgeColoCountry"`
-// 							EdgePopName      string `json:"edgePopName"`
-// 							RemoteTunnelIPv4 string `json:"remoteTunnelIPv4"`
-// 							ResultStatus     string `json:"resultStatus"`
-// 							SiteName         string `json:"siteName"`
-// 							TunnelName       string `json:"tunnelName"`
-// 						} `json:"dimensions"`
-// 					}{
-// 						{
-// 							Count: 1,
-// 							Dimensions: struct {
-// 								Active           uint8  `json:"active"`
-// 								Datetime         string `json:"datetime"`
-// 								EdgeColoCity     string `json:"edgeColoCity"`
-// 								EdgeColoCountry  string `json:"edgeColoCountry"`
-// 								EdgePopName      string `json:"edgePopName"`
-// 								RemoteTunnelIPv4 string `json:"remoteTunnelIPv4"`
-// 								ResultStatus     string `json:"resultStatus"`
-// 								SiteName         string `json:"siteName"`
-// 								TunnelName       string `json:"tunnelName"`
-// 							}{
-// 								Active:           1,
-// 								Datetime:         time.Now().UTC().Format(time.RFC3339),
-// 								EdgeColoCity:     "Bangalore",
-// 								EdgeColoCountry:  "IN",
-// 								EdgePopName:      "BLR",
-// 								RemoteTunnelIPv4: "192.0.2.1",
-// 								ResultStatus:     "healthy",
-// 								SiteName:         "MockSite-01",
-// 								TunnelName:       fmt.Sprintf("Tunnel-%d", uniqueSuffix), // 👈 changing label
-// 							},
-// 						},
-// 					},
-// 				},
-// 			},
-// 		},
-// 	}, nil
-// }
 
 // MagicTransitTunnelHealthChecksAdaptiveGroups query magicTransitTunnelHealthChecksAdaptiveGroups.
 func MagicTransitTunnelHealthChecksAdaptiveGroups(accountID string) (*models.CloudflareResponseMagicTransit, error) {
