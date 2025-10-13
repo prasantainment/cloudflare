@@ -86,6 +86,14 @@ func Execute() error {
 	viper.BindEnv("use_individual_error_code")
 	viper.SetDefault("use_individual_error_code", false)
 
+	flags.Bool("all_origin_status_code", false, "All status code bound to origin status code, else origin error codes")
+	viper.BindEnv("all_origin_status_code")
+	viper.SetDefault("all_origin_status_code", false)
+
+	flags.Bool("eyeball_only", false, "When true, include only eyeball traffic; default is false to include all sources")
+	viper.BindEnv("eyeball_only")
+	viper.SetDefault("eyeball_only", false)
+
 	viper.BindPFlags(flags)
 	return cmd.Execute()
 }

@@ -91,12 +91,15 @@ docker run -d --rm -p 8080:8080 --name cloudflare-exporter \
   -e CF_API_TOKEN="DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" cloudflare-exporter
 
 
+____________________________________________________________
+
+docker run -d --rm -p 8080:8080 --name cloudflare-exporter \
+  -e CF_API_TOKEN="DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" -e ALL_ORIGIN_STATUS_CODE=true -e EYEBALL_ONLY=true cloudflare-exporter
 
 
 
 
-
-./connector-service --listen ":8080" --cf_api_token "DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" --stale_metrics_removal=true --use_individual_error_codes=true --scrape_delay 120
+./connector-service --listen ":8080" --cf_api_token "DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" --stale_metrics_removal=true --use_individual_error_code=true --scrape_delay 120
 
 
 docker run -d --rm -p 8080:8080 --name cloudflare-exporter   -e CF_API_TOKEN="DLZ4G6vGLMeDd0uYSr8P3ECO03u8Qacq8Nc_Q7cd" -e USE_INDIVIDUAL_ERROR_CODE="true" -e STALE_METRICS_REMOVAL="true" cloudflare-exporter

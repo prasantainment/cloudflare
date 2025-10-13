@@ -434,12 +434,20 @@ func HTTPRequestsAdaptiveMetrics(ctx context.Context, zoneIDs []string) (*models
 	now = now.Truncate(s)
 	now1mAgo := now.Add(-60 * time.Second)
 
-	request := graphql.NewRequest(`
-		query ($zoneIDs: [String!], $mintime: Time!, $maxtime: Time!, $limit: Int!)  {
+	// Toggle: eyeball traffic only
+	eyeballOnly := viper.GetBool("eyeball_only") // default false
+	filterRequestSource := ""
+	if eyeballOnly {
+		filterRequestSource = `, requestSource: "eyeball"`
+	}
+
+	// Build GraphQL query dynamically
+	query := fmt.Sprintf(`
+		query ($zoneIDs: [String!], $mintime: Time!, $maxtime: Time!, $limit: Int!, $statusCodes: [Int!]) {
 			viewer {
 				zones(filter: { zoneTag_in: $zoneIDs }) {
 					zoneTag
-					httpRequestsAdaptiveGroups(limit: $limit, filter: { datetime_geq: $mintime, datetime_lt: $maxtime, cacheStatus_notin: ["hit"], originResponseStatus_in: [400, 404, 500, 502, 503, 504, 522, 523, 524] }) {
+					httpRequestsAdaptiveGroups(limit: $limit, filter: { datetime_geq: $mintime, datetime_lt: $maxtime, cacheStatus_notin: ["hit"], originResponseStatus_in: $statusCodes%s }) {
 						count
 						dimensions {
 							originResponseStatus
@@ -453,19 +461,36 @@ func HTTPRequestsAdaptiveMetrics(ctx context.Context, zoneIDs []string) (*models
 				}
 			}
 		}
-		`)
+	`, filterRequestSource)
+
+	request := graphql.NewRequest(query)
+
 	if len(viper.GetString("cf_api_token")) > 0 {
 		request.Header.Set("Authorization", "Bearer "+viper.GetString("cf_api_token"))
 	} else {
 		request.Header.Set("X-AUTH-EMAIL", viper.GetString("cf_api_email"))
 		request.Header.Set("X-AUTH-KEY", viper.GetString("cf_api_key"))
 	}
+
 	request.Var("limit", viper.GetInt("cf_query_limit"))
 	request.Var("maxtime", now)
 	request.Var("mintime", now1mAgo)
 	request.Var("zoneIDs", zoneIDs)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) // Set 10s timeout
+	// then set variables AFTER declaring request
+	includeAllStatus := viper.GetBool("all_origin_status_code")
+
+	var originErrorCodes = []int{400, 401, 403, 404, 429, 500, 502, 503, 504, 520, 522, 523, 524}
+	var allOriginCodes = []int{200, 201, 202, 204, 301, 302, 304, 400, 401, 403, 404, 429, 500, 502, 503, 504, 520, 522, 523, 524}
+
+	statusCodes := originErrorCodes // default: only errors
+	if includeAllStatus {
+		statusCodes = allOriginCodes // true → all codes
+	}
+
+	request.Var("statusCodes", statusCodes)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) // Set 30s timeout
 	defer cancel()
 
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
@@ -501,12 +526,19 @@ func HTTPRequestsEdgeCountryMetrics(ctx context.Context, zoneIDs []string) (*mod
 	now = now.Truncate(s)
 	now1mAgo := now.Add(-60 * time.Second)
 
+	// Toggle: eyeball traffic only
+	eyeballOnly := viper.GetBool("eyeball_only") // default false
+	requestSource := ""
+	if eyeballOnly {
+		requestSource = "eyeball"
+	}
+
 	request := graphql.NewRequest(`
-		query ($zoneIDs: [String!], $mintime: Time!, $maxtime: Time!, $limit: Int!)  {
+		query ($zoneIDs: [String!], $mintime: Time!, $maxtime: Time!, $limit: Int!, $requestSource: String!)  {
 			viewer {
 				zones(filter: { zoneTag_in: $zoneIDs }) {
 					zoneTag
-					httpRequestsEdgeCountryHost: httpRequestsAdaptiveGroups(limit: $limit, filter: { datetime_geq: $mintime, datetime_lt: $maxtime,  requestSource:"eyeball" }) {
+					httpRequestsEdgeCountryHost: httpRequestsAdaptiveGroups(limit: $limit, filter: { datetime_geq: $mintime, datetime_lt: $maxtime, requestSource: $requestSource }) {
 						count
 						dimensions {
 							edgeResponseStatus
@@ -518,6 +550,7 @@ func HTTPRequestsEdgeCountryMetrics(ctx context.Context, zoneIDs []string) (*mod
 			}
 		}
 		`)
+
 	if len(viper.GetString("cf_api_token")) > 0 {
 		request.Header.Set("Authorization", "Bearer "+viper.GetString("cf_api_token"))
 	} else {
@@ -528,8 +561,9 @@ func HTTPRequestsEdgeCountryMetrics(ctx context.Context, zoneIDs []string) (*mod
 	request.Var("maxtime", now)
 	request.Var("mintime", now1mAgo)
 	request.Var("zoneIDs", zoneIDs)
+	request.Var("requestSource", requestSource)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) // Set 10s timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
@@ -545,7 +579,7 @@ func HTTPRequestsEdgeCountryMetrics(ctx context.Context, zoneIDs []string) (*mod
 
 	var resp models.CloudflareResponseHTTPRequestsEdge
 	if err := graphqlClient.Run(ctx, request, &resp); err != nil {
-		logging.Error("Failed to HTTPRequestsAdaptiveMetrics totals", map[string]interface{}{
+		logging.Error("Failed to HTTPRequestsEdgeCountryMetrics totals", map[string]interface{}{
 			"error": err.Error(),
 		})
 		return nil, err
@@ -863,7 +897,7 @@ func FetchFirewallRules(zoneID string) map[string]string {
 	return firewallRulesMap
 }
 
-// FetchColoTotals returns queries httpRequestsAdaptiveGroups.
+// FetchColoTotals returns queries
 func FetchColoTotals(zoneIDs []string) (*models.CloudflareResponseColo, error) {
 
 	// Log the start of the process
@@ -876,34 +910,42 @@ func FetchColoTotals(zoneIDs []string) (*models.CloudflareResponseColo, error) {
 	now = now.Truncate(s)
 	now1mAgo := now.Add(-60 * time.Second)
 
+	// Toggle: eyeball traffic only
+	eyeballOnly := viper.GetBool("eyeball_only") // default false
+	requestSource := ""
+	if eyeballOnly {
+		requestSource = "eyeball"
+	}
+
 	request := graphql.NewRequest(`
-	query ($zoneIDs: [String!], $mintime: Time!, $maxtime: Time!, $limit: Int!) {
+	query ($zoneIDs: [String!], $mintime: Time!, $maxtime: Time!, $limit: Int!, $requestSource: String!) {
 		viewer {
 			zones(filter: { zoneTag_in: $zoneIDs }) {
 				zoneTag
 				httpRequestsAdaptiveGroups(
 					limit: $limit
-					filter: { datetime_geq: $mintime, datetime_lt: $maxtime }
-					) {
-						count
-						avg {
-							sampleInterval
-						}
-						dimensions {
-							clientRequestHTTPHost
-							coloCode
-							datetime
-							originResponseStatus
-						}
-						sum {
-							edgeResponseBytes
-							visits
-						}
+					filter: { datetime_geq: $mintime, datetime_lt: $maxtime, requestSource: $requestSource },
+				) {
+					count
+					avg {
+						sampleInterval
+					}
+					dimensions {
+						clientRequestHTTPHost
+						coloCode
+						datetime
+						originResponseStatus
+					}
+					sum {
+						edgeResponseBytes
+						visits
 					}
 				}
 			}
 		}
+	}
 `)
+
 	if len(viper.GetString("cf_api_token")) > 0 {
 		request.Header.Set("Authorization", "Bearer "+viper.GetString("cf_api_token"))
 	} else {
@@ -914,6 +956,7 @@ func FetchColoTotals(zoneIDs []string) (*models.CloudflareResponseColo, error) {
 	request.Var("maxtime", now)
 	request.Var("mintime", now1mAgo)
 	request.Var("zoneIDs", zoneIDs)
+	request.Var("requestSource", requestSource)
 
 	// Log request variables
 	logging.Info("GraphQL request variables", map[string]interface{}{
@@ -924,7 +967,7 @@ func FetchColoTotals(zoneIDs []string) (*models.CloudflareResponseColo, error) {
 	})
 
 	// Use a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second) // Set 10s timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	graphqlClient := graphql.NewClient(cfGraphQLEndpoint)
