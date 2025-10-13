@@ -6,12 +6,14 @@ import (
 	"time"
 )
 
+// RetryableClient struct for retry mechanism.
 type RetryableClient struct {
 	client        *http.Client
 	retryMax      int
 	retryInterval time.Duration
 }
 
+// NewRetryableClient handles retrying client with intervel.
 func NewRetryableClient(retryMax int, retryInterval time.Duration) *RetryableClient {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -19,6 +21,7 @@ func NewRetryableClient(retryMax int, retryInterval time.Duration) *RetryableCli
 	return &RetryableClient{client: client, retryMax: retryMax, retryInterval: retryInterval}
 }
 
+// DoRequest handles http request and return response and error
 func (r *RetryableClient) DoRequest(req *http.Request) (*http.Response, error) {
 	var resp *http.Response
 	var err error

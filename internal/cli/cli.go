@@ -62,6 +62,38 @@ func Execute() error {
 	viper.BindEnv("metrics_denylist")
 	viper.SetDefault("metrics_denylist", "")
 
+	flags.Bool("exclude_host", true, "metrics data without host when exclude")
+	viper.BindEnv("exclude_host")
+	viper.SetDefault("exclude_host", true)
+
+	flags.Int("cf_query_limit", 1000, "query limit for cloudflare API")
+	viper.BindEnv("cf_query_limit")
+	viper.SetDefault("cf_query_limit", 1000)
+
+	flags.Bool("cf_http_status_group", false, "query limit for cloudflare API")
+	viper.BindEnv("cf_http_status_group")
+	viper.SetDefault("cf_http_status_group", false)
+
+	flags.Bool("stale_metrics_removal", false, "removing stale metrics")
+	viper.BindEnv("stale_metrics_removal")
+	viper.SetDefault("stale_metrics_removal", false)
+
+	flags.Int("stale_metrics_duration", 15, "duration to remove stale metrics")
+	viper.BindEnv("stale_metrics_duration")
+	viper.SetDefault("stale_metrics_duration", 15)
+
+	flags.Bool("use_individual_error_code", false, "Report individual error codes when true instead of grouped (e.g., 500 vs 5xx)")
+	viper.BindEnv("use_individual_error_code")
+	viper.SetDefault("use_individual_error_code", false)
+
+	flags.Bool("all_origin_status_code", false, "All status code bound to origin status code, else origin error codes")
+	viper.BindEnv("all_origin_status_code")
+	viper.SetDefault("all_origin_status_code", false)
+
+	flags.Bool("eyeball_only", false, "When true, include only eyeball traffic; default is false to include all sources")
+	viper.BindEnv("eyeball_only")
+	viper.SetDefault("eyeball_only", false)
+
 	viper.BindPFlags(flags)
 	return cmd.Execute()
 }

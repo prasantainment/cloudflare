@@ -1,0 +1,103 @@
+Only potential causes for the "double metric count":
+
+- Exporter running twice
+
+- Cloudflare API returning overlapping results
+
+- Prometheus scraping multiple times
+
+- Different zone lists, accounts, or time windows
+
+_____________________________________________________________
+
+
+
+
+
+
+Exporter querying Cloudflare API twice per scrape
+
+Example Scenario:
+Prometheus scrapes every 30s
+
+Exporter is misconfigured to trigger two GraphQL calls per scrape
+Result: You get roughly double count in the metrics → rate() also doubles
+
+
+Inside exporter logs, look for duplicate GraphQL logs for same zone/time:
+INFO[2025-07-24 21:24:05] Successfully HTTPRequestsEdgeCountryMetrics totalsmap[zone_count:4] 
+INFO[2025-07-24 21:24:05] Successfully HTTPRequestsEdgeCountryMetrics totalsmap[zone_count:4] 
+
+
+
+Exporter being scraped twice (duplicate targets in Prometheus)
+
+- job_name: cloudflare
+  static_configs:
+    - targets: [exporter:8080]
+
+- job_name: cloudflare-alt
+  static_configs:
+    - targets: [exporter:8080]
+
+
+So exporter is scraped twice, 2x metrics in Prometheus.
+
+_________________________________________________________________
+
+
+
+
+
+metric_relabel_configs:
+  - separator: ;
+    regex: ^host$
+    replacement: $1
+    action: labeldrop
+
+  - source_labels: [account]
+    separator: ;
+    regex: (.*)
+    target_label: cf_account
+    replacement: $1
+    action: replace
+
+  - source_labels: [zone]
+    separator: ;
+    regex: (.*)
+    target_label: cf_zone
+    replacement: $1
+    action: replace
+
+
+
+scrape_configs:
+  - job_name: cloudflare-metrics
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['exporter:8080']
+    metric_relabel_configs:
+
+
+
+
+Factor	Internal	Customer
+Exporter setup	| Single exporter	| Possibly running 2 exporters
+Prometheus config	| Scraped once per 30s	| Scraped twice (by 2 jobs or clusters)
+Zones monitored	| Maybe fewer zones	| More active zones
+API query window	| Aligned	| Overlapping time windows
+Grafana dashboard logic	| Rate per zone	| Maybe mis-aggregated
+
+
+
+____________________________________________
+
+cloudflare_zone_customer_error_5xx_rate
+cloudflare_zone_origin_error_rate
+cloudflare_worker_requests_count
+cloudflare_worker_errors_count
+cloudflare_worker_cpu_time
+cloudflare_worker_duration
+cloudflare_logpush_failed_jobs_account_count
+cloudflare_logpush_failed_jobs_zone_count
+
